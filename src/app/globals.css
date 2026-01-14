@@ -1,26 +1,110 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #09090b;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: theme(colors.zinc.200);
+}
+
+.dark * {
+  border-color: theme(colors.zinc.800);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: theme(colors.zinc.300);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: theme(colors.zinc.400);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: theme(colors.zinc.700);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: theme(colors.zinc.600);
+}
+
+/* Thin scrollbar variant for toolbars */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: theme(colors.zinc.200);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: theme(colors.zinc.300);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: theme(colors.zinc.700);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: theme(colors.zinc.600);
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 2px solid theme(colors.zinc.400);
+  outline-offset: 2px;
+}
+
+.dark :focus-visible {
+  outline-color: theme(colors.zinc.600);
+}
+
+/* Prevent page-level horizontal scroll */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
