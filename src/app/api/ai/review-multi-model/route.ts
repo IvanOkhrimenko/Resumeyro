@@ -7,6 +7,7 @@ import { PLANS } from "@/lib/constants";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { parseJSONFromLLM } from "@/lib/ai/json-parser";
 import type { ActionableReviewResult, ActionableSuggestion } from "@/stores/ai-features-store";
 
 // Provider instances cache
@@ -306,6 +307,8 @@ function deduplicateSuggestions(suggestions: ActionableSuggestion[]): Actionable
 }
 
 export async function POST(req: Request) {
+  console.error("[Multi-Model Review] === REQUEST RECEIVED ===");
+  console.warn("[Multi-Model Review] === REQUEST RECEIVED (warn) ===");
   try {
     const session = await auth();
 
@@ -386,51 +389,28 @@ export async function POST(req: Request) {
         const { text } = await generateText({
           model,
           prompt,
-          maxOutputTokens: 3000,
+          maxOutputTokens: 6000, // Ensure enough tokens for detailed suggestions
           temperature: 0.3,
         });
 
-        // Parse the JSON response - try multiple extraction methods
-        let jsonStr: string | null = null;
+        // Parse the JSON response using robust parser
+        const parseResult = parseJSONFromLLM<ActionableReviewResult>(text);
 
-        // Method 1: Extract from markdown code block
-        const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-          jsonStr = codeBlockMatch[1].trim();
-        }
-
-        // Method 2: Find JSON object directly
-        if (!jsonStr) {
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            jsonStr = jsonMatch[0];
+        if (!parseResult.success || !parseResult.data) {
+          console.error(`[Multi-Model] JSON parse error from ${modelConfig.modelId}:`, parseResult.error);
+          if (parseResult.rawResponse) {
+            console.error(`[Multi-Model] Response preview:`, parseResult.rawResponse.substring(0, 500));
           }
-        }
-
-        if (!jsonStr) {
-          console.error(`[Multi-Model] No JSON found in response from ${modelConfig.modelId}. Response preview:`, text.substring(0, 500));
           failedModels.push({
             modelName: modelConfig.name || modelConfig.modelId,
             provider: modelConfig.provider,
             modelId: modelConfig.modelId,
-            error: "No valid JSON in response",
+            error: parseResult.error || "Failed to parse JSON",
           });
           return null;
         }
 
-        let review: ActionableReviewResult;
-        try {
-          review = JSON.parse(jsonStr) as ActionableReviewResult;
-        } catch (parseError) {
-          console.error(`[Multi-Model] JSON parse error from ${modelConfig.modelId}:`, parseError, "JSON preview:", jsonStr.substring(0, 500));
-          failedModels.push({
-            modelName: modelConfig.name || modelConfig.modelId,
-            provider: modelConfig.provider,
-            modelId: modelConfig.modelId,
-            error: `JSON parse error: ${parseError instanceof Error ? parseError.message : "Unknown"}`,
-          });
-          return null;
-        }
+        const review = parseResult.data;
 
         // Ensure required fields exist
         if (!review.suggestions) review.suggestions = [];
@@ -533,14 +513,12 @@ Missing Sections: ${JSON.stringify(r.review.missingSections, null, 2)}
       temperature: 0.2,
     });
 
-    // Parse synthesis result
+    // Parse synthesis result using robust parser
     let synthesizedReview: ActionableReviewResult;
-    try {
-      const jsonMatch = synthesisText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in synthesis response");
-      }
-      synthesizedReview = JSON.parse(jsonMatch[0]);
+    const synthesisParseResult = parseJSONFromLLM<ActionableReviewResult>(synthesisText);
+
+    if (synthesisParseResult.success && synthesisParseResult.data) {
+      synthesizedReview = synthesisParseResult.data;
 
       // Ensure required fields exist
       if (!synthesizedReview.suggestions) synthesizedReview.suggestions = [];
@@ -561,8 +539,11 @@ Missing Sections: ${JSON.stringify(r.review.missingSections, null, 2)}
         canQuickApply: s.canQuickApply ?? (s.type === "text_improvement" && !!s.suggestedValue),
         previewRequired: s.previewRequired ?? s.type !== "text_improvement",
       }));
-    } catch (parseError) {
-      console.error("Failed to parse synthesis response:", parseError);
+    } else {
+      console.error("[Multi-Model] Failed to parse synthesis response:", synthesisParseResult.error);
+      if (synthesisParseResult.rawResponse) {
+        console.error("[Multi-Model] Synthesis response preview:", synthesisParseResult.rawResponse.substring(0, 500));
+      }
 
       // Fallback: combine results manually
       const allSuggestions: ActionableSuggestion[] = [];
@@ -619,10 +600,11 @@ Missing Sections: ${JSON.stringify(r.review.missingSections, null, 2)}
           temperature: 0.1, // Low temp for factual checking
         });
 
-        // Parse verification result
-        const verifyMatch = verificationText.match(/\{[\s\S]*\}/);
-        if (verifyMatch) {
-          const verifyData = JSON.parse(verifyMatch[0]);
+        // Parse verification result using robust parser
+        const verifyParseResult = parseJSONFromLLM<{ verifiedSuggestions?: Array<{ id: string; isValid: boolean; reason?: string }> }>(verificationText);
+
+        if (verifyParseResult.success && verifyParseResult.data) {
+          const verifyData = verifyParseResult.data;
           const validIds = new Set<string>();
 
           for (const v of verifyData.verifiedSuggestions || []) {
@@ -639,6 +621,8 @@ Missing Sections: ${JSON.stringify(r.review.missingSections, null, 2)}
 
           verificationResult = { filteredCount, verifiedIds: validIds };
           console.log(`[Multi-Model] Verification complete: ${filteredCount} false positives filtered`);
+        } else {
+          console.warn("[Multi-Model] Could not parse verification response, keeping all suggestions");
         }
       } catch (verifyError) {
         console.error("[Multi-Model] Verification failed, keeping all suggestions:", verifyError);

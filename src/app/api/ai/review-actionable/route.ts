@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { generateText } from "ai";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { models } from "@/lib/ai/client";
+import { taskModels } from "@/lib/ai/client";
 import { ACTIONABLE_REVIEW_PROMPT, fillPromptTemplate } from "@/lib/ai/prompts";
 import { PLANS } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/settings";
+import { parseJSONFromLLM } from "@/lib/ai/json-parser";
 import type { ActionableReviewResult } from "@/stores/ai-features-store";
 
 export async function POST(req: Request) {
+  console.error("[AI Review] === REQUEST RECEIVED ===");
+  console.warn("[AI Review] === REQUEST RECEIVED (warn) ===");
   try {
     const session = await auth();
 
@@ -91,23 +94,38 @@ export async function POST(req: Request) {
       targetRole: targetRole || "Not specified",
     });
 
-    // Generate review using Claude for better analysis
+    // Get the configured model for review task
+    const reviewConfig = await taskModels.review();
+
+    // Ensure minimum token limit for review (some models need more space for detailed suggestions)
+    const MIN_REVIEW_TOKENS = 6000;
+    const effectiveMaxTokens = Math.max(reviewConfig.maxTokens, MIN_REVIEW_TOKENS);
+
+    // Always log model info for debugging
+    console.log(`[AI Review] Model: ${reviewConfig.provider}/${reviewConfig.modelId} | User: ${session.user.email} | isAdmin: ${isAdmin}`);
+    console.log(`[AI Review] Config: temperature=${reviewConfig.temperature}, maxTokens=${effectiveMaxTokens} (configured: ${reviewConfig.maxTokens})`);
+
+    const startTime = Date.now();
+
+    // Generate review using configured model
     const { text } = await generateText({
-      model: await models.analysis(),
+      model: reviewConfig.model,
       prompt,
-      maxOutputTokens: 3000,
-      temperature: 0.3,
+      maxOutputTokens: effectiveMaxTokens,
+      temperature: reviewConfig.temperature,
     });
 
-    // Parse the JSON response
+    const duration = Date.now() - startTime;
+
+    // Log generation time
+    console.log(`[AI Review] Generation completed in ${duration}ms`);
+
+    // Parse the JSON response using robust parser
     let review: ActionableReviewResult;
-    try {
-      // Extract JSON from the response (in case there's extra text)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
-      }
-      review = JSON.parse(jsonMatch[0]);
+    const parseResult = parseJSONFromLLM<ActionableReviewResult>(text);
+
+    if (parseResult.success && parseResult.data) {
+      review = parseResult.data;
 
       // Ensure required fields exist
       if (!review.suggestions) review.suggestions = [];
@@ -122,9 +140,11 @@ export async function POST(req: Request) {
         canQuickApply: s.canQuickApply ?? (s.type === 'text_improvement' && !!s.suggestedValue),
         previewRequired: s.previewRequired ?? (s.type !== 'text_improvement'),
       }));
-
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", parseError);
+    } else {
+      console.error("[AI Review] Failed to parse AI response:", parseResult.error);
+      if (parseResult.rawResponse) {
+        console.error("[AI Review] Raw response preview:", parseResult.rawResponse);
+      }
       // Return a fallback structure
       review = {
         overallScore: 70,
@@ -134,6 +154,9 @@ export async function POST(req: Request) {
         missingSections: [],
       };
     }
+
+    // Log results summary
+    console.log(`[AI Review] Results: score=${review.overallScore}, suggestions=${review.suggestions.length}, strengths=${review.strengths.length}, missing=${review.missingSections.length}`);
 
     // Track usage
     const now = new Date();

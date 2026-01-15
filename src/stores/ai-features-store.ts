@@ -18,6 +18,7 @@ export interface ActionableSuggestion {
   // Runtime state (not from API)
   status?: SuggestionStatus;
   appliedAt?: number;
+  originalValue?: string; // Stored when applied, for undo detection
 }
 
 export interface MissingSection {
@@ -133,7 +134,7 @@ interface AIFeaturesStore {
   clearHighlight: () => void;
 
   // Suggestion status actions
-  markSuggestionApplied: (suggestionId: string, newValue?: string) => void;
+  markSuggestionApplied: (suggestionId: string, newValue?: string, actualElementId?: string, originalText?: string) => void;
   markSuggestionStale: (suggestionId: string) => void;
   markSuggestionDismissed: (suggestionId: string) => void;
   removeSuggestion: (suggestionId: string) => void;
@@ -145,6 +146,9 @@ interface AIFeaturesStore {
   // Re-validation
   setRevalidating: (suggestionId: string, loading: boolean) => void;
   updateSuggestionAfterRevalidation: (suggestionId: string, newSuggestion: Partial<ActionableSuggestion> | null) => void;
+
+  // Undo/Redo sync
+  revalidateAppliedSuggestions: (currentElements: ElementSnapshot[]) => void;
 }
 
 export const useAIFeaturesStore = create<AIFeaturesStore>((set, get) => ({
@@ -258,25 +262,26 @@ export const useAIFeaturesStore = create<AIFeaturesStore>((set, get) => ({
   },
 
   // Mark suggestion as applied (with visual feedback)
-  markSuggestionApplied: (suggestionId, newValue) => {
-    const { reviewResult, elementSnapshots } = get();
+  markSuggestionApplied: (suggestionId, newValue, actualElementId, originalText) => {
+    const { reviewResult } = get();
     if (!reviewResult) return;
 
     const updatedSuggestions = reviewResult.suggestions.map(s => {
       if (s.id === suggestionId) {
-        // Update the snapshot with new value
-        if (newValue && s.targetSemanticType) {
-          const snapshot = elementSnapshots.get(s.targetSemanticType);
-          if (snapshot) {
-            elementSnapshots.set(s.targetSemanticType, { ...snapshot, text: newValue });
-          }
-        }
+        console.log('[markApplied] suggestionId:', suggestionId);
+        console.log('[markApplied] actualElementId:', actualElementId);
+        console.log('[markApplied] originalText (first 50):', originalText?.substring(0, 50));
 
         return {
           ...s,
           status: 'applied' as const,
           appliedAt: Date.now(),
-          currentValue: newValue || s.suggestedValue, // Update current to the applied value
+          // Store actual element ID for undo detection (not the AI-provided one)
+          targetElementId: actualElementId || s.targetElementId,
+          // Store original text for undo detection
+          originalValue: originalText || s.currentValue,
+          // Update currentValue to the new applied text
+          currentValue: newValue || s.suggestedValue,
         };
       }
       return s;
@@ -287,7 +292,6 @@ export const useAIFeaturesStore = create<AIFeaturesStore>((set, get) => ({
         ...reviewResult,
         suggestions: updatedSuggestions,
       },
-      elementSnapshots,
     });
   },
 
@@ -476,6 +480,105 @@ export const useAIFeaturesStore = create<AIFeaturesStore>((set, get) => ({
         },
         revalidatingIds: newRevalidatingIds,
       });
+    }
+  },
+
+  // Revalidate applied suggestions after undo/redo
+  // If the current text no longer matches what was applied, revert status to 'pending'
+  revalidateAppliedSuggestions: (currentElements) => {
+    const { reviewResult } = get();
+    if (!reviewResult) {
+      console.log('[AI Revalidate] No review result, skipping');
+      return;
+    }
+
+    const appliedSuggestions = reviewResult.suggestions.filter(s => s.status === 'applied');
+    console.log('[AI Revalidate] Checking', appliedSuggestions.length, 'applied suggestions');
+
+    if (appliedSuggestions.length === 0) return;
+
+    // Build list of all current text contents for searching
+    const allCurrentTexts = currentElements.map(el => el.text);
+    console.log('[AI Revalidate] Canvas texts count:', allCurrentTexts.length);
+    // Log first few canvas texts for debugging
+    allCurrentTexts.slice(0, 5).forEach((t, i) => {
+      console.log(`  Canvas text ${i}:`, t.substring(0, 80));
+    });
+
+    let hasChanges = false;
+    const updatedSuggestions = reviewResult.suggestions.map(suggestion => {
+      // Only check 'applied' suggestions
+      if (suggestion.status !== 'applied') return suggestion;
+
+      // Normalize texts to handle whitespace differences
+      const originalText = suggestion.originalValue?.trim();
+      const appliedText = suggestion.currentValue?.trim(); // This is the FULL text AFTER apply
+      const suggestedValue = (suggestion.suggestedValue || '').trim();
+
+      console.log('[AI Revalidate] Checking suggestion:', suggestion.id);
+      console.log('  originalText (stored before apply):', originalText?.substring(0, 100));
+      console.log('  appliedText (stored after apply):', appliedText?.substring(0, 100));
+      console.log('  suggestedValue (replacement):', suggestedValue?.substring(0, 100));
+
+      if (!originalText) {
+        console.log('  No originalText stored, skipping');
+        return suggestion;
+      }
+
+      // Simple check: does the APPLIED full text still exist on canvas?
+      // After undo, the appliedText should NOT exist, but originalText should
+      // Also normalize canvas texts for comparison
+      const appliedTextExactMatch = allCurrentTexts.some(text => text.trim() === appliedText);
+      const originalTextExactMatch = allCurrentTexts.some(text => text.trim() === originalText);
+
+      // Also check if suggestedValue (the replacement substring) is in any canvas text
+      const suggestedValueInCanvas = allCurrentTexts.some(text =>
+        text.includes(suggestedValue)
+      );
+
+      console.log('  appliedTextExactMatch:', appliedTextExactMatch);
+      console.log('  originalTextExactMatch:', originalTextExactMatch);
+      console.log('  suggestedValueInCanvas:', suggestedValueInCanvas);
+
+      // Undo detection: original text is back AND (applied text is gone OR suggested value is gone)
+      if (originalTextExactMatch && !appliedTextExactMatch) {
+        hasChanges = true;
+        console.log('[AI Revalidate] ✓ Reverting to pending (original back, applied gone):', suggestion.id);
+        return {
+          ...suggestion,
+          status: 'pending' as const,
+          appliedAt: undefined,
+          currentValue: originalText, // Restore original
+          originalValue: undefined, // Clear
+        };
+      }
+
+      // Alternative check: if original text exists and suggested value no longer in canvas
+      if (originalTextExactMatch && !suggestedValueInCanvas) {
+        hasChanges = true;
+        console.log('[AI Revalidate] ✓ Reverting to pending (suggested value gone):', suggestion.id);
+        return {
+          ...suggestion,
+          status: 'pending' as const,
+          appliedAt: undefined,
+          currentValue: originalText,
+          originalValue: undefined,
+        };
+      }
+
+      return suggestion;
+    });
+
+    if (hasChanges) {
+      console.log('[AI Revalidate] Updating store with changes');
+      set({
+        reviewResult: {
+          ...reviewResult,
+          suggestions: updatedSuggestions,
+        },
+      });
+    } else {
+      console.log('[AI Revalidate] No changes detected');
     }
   },
 }));

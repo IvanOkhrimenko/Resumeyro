@@ -113,6 +113,7 @@ export function useAIActions() {
       updateSuggestionAfterRevalidation: state.updateSuggestionAfterRevalidation,
       setFormattingResult: state.setFormattingResult,
       setFormattingError: state.setFormattingError,
+      revalidateAppliedSuggestions: state.revalidateAppliedSuggestions,
     }))
   );
 }

@@ -7,7 +7,6 @@ import {
   ChevronUp,
   Crosshair,
   Zap,
-  Eye,
   AlertTriangle,
   AlertCircle,
   Lightbulb,
@@ -26,7 +25,6 @@ interface SuggestionCardProps {
   suggestion: ActionableSuggestion;
   onHighlight: (suggestion: ActionableSuggestion) => void;
   onQuickApply: (suggestion: ActionableSuggestion) => void;
-  onPreview: (suggestion: ActionableSuggestion) => void;
   onDismiss?: (suggestion: ActionableSuggestion) => void;
   onRevalidate?: (suggestion: ActionableSuggestion) => void;
   isHighlighted?: boolean;
@@ -97,7 +95,6 @@ export function SuggestionCard({
   suggestion,
   onHighlight,
   onQuickApply,
-  onPreview,
   onDismiss,
   onRevalidate,
   isHighlighted = false,
@@ -121,10 +118,15 @@ export function SuggestionCard({
 
   return (
     <motion.div
-      layout
+      layout="position"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: isApplied || isDismissed ? 0.6 : 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
+      transition={{
+        layout: { duration: 0.2, ease: "easeOut" },
+        opacity: { duration: 0.25 },
+        y: { duration: 0.2 }
+      }}
       className={cn(
         "group relative rounded-lg border-l-[3px] overflow-hidden transition-all duration-200",
         config.border,
@@ -345,19 +347,6 @@ export function SuggestionCard({
               </button>
             )}
 
-            {!isApplied && !isStale && suggestion.previewRequired && (
-              <button
-                onClick={() => onPreview(suggestion)}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
-                  "bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/30 dark:hover:bg-violet-900/50",
-                  "text-violet-700 dark:text-violet-400"
-                )}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Preview</span>
-              </button>
-            )}
 
             {/* Applied: Show undo option (if needed in future) */}
             {isApplied && (

@@ -154,10 +154,15 @@ export function CanvasSidebar() {
 
   // Check multi-model availability and admin status
   useEffect(() => {
+    let isMounted = true;
+    const abortController = new AbortController();
+
     const checkMultiModelAccess = async () => {
       try {
         // Check subscription for multi-model access
-        const subResponse = await fetch("/api/subscription");
+        const subResponse = await fetch("/api/subscription", { signal: abortController.signal });
+        if (!isMounted) return;
+
         if (subResponse.ok) {
           const subData = await subResponse.json();
           // TODO: restore Premium check after testing
@@ -171,7 +176,9 @@ export function CanvasSidebar() {
         }
 
         // Fetch configured models from public endpoint
-        const configResponse = await fetch("/api/ai/multi-model-models");
+        const configResponse = await fetch("/api/ai/multi-model-models", { signal: abortController.signal });
+        if (!isMounted) return;
+
         if (configResponse.ok) {
           const configData = await configResponse.json();
           if (configData.models && configData.models.length > 0) {
@@ -179,13 +186,19 @@ export function CanvasSidebar() {
           }
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') return; // Ignore abort errors
         console.error("Failed to check multi-model access:", error);
         // Enable for testing even on error
-        setMultiModelAvailable(true);
+        if (isMounted) setMultiModelAvailable(true);
       }
     };
 
     checkMultiModelAccess();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, []);
 
   // Listen to canvas changes for stale detection
@@ -220,6 +233,39 @@ export function CanvasSidebar() {
       canvas.off('text:changed', handleCanvasChange);
       canvas.off('object:removed', handleObjectRemoved);
     };
+  }, [canvas, reviewResult, getCurrentElementSnapshots, aiActions]);
+
+  // Sync suggestions with undo/redo operations
+  // Track previous historyIndex to detect changes
+  const prevHistoryIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!canvas || !reviewResult) return;
+
+    // Subscribe to full state changes and check historyIndex manually
+    const unsubscribe = useCanvasStore.subscribe((state) => {
+      const currentIndex = state.historyIndex;
+
+      // Only trigger if historyIndex actually changed
+      if (prevHistoryIndexRef.current !== null && prevHistoryIndexRef.current !== currentIndex) {
+        console.log('[Undo/Redo] historyIndex changed:', prevHistoryIndexRef.current, '->', currentIndex);
+
+        // Delay to ensure canvas is fully updated after undo/redo
+        // loadFromJSON needs time to reconstruct all objects
+        setTimeout(() => {
+          const snapshots = getCurrentElementSnapshots();
+          console.log('[Undo/Redo] Revalidating applied suggestions, snapshots count:', snapshots.length);
+          aiActions.revalidateAppliedSuggestions(snapshots);
+        }, 300);
+      }
+
+      prevHistoryIndexRef.current = currentIndex;
+    });
+
+    // Initialize with current value
+    prevHistoryIndexRef.current = useCanvasStore.getState().historyIndex;
+
+    return () => unsubscribe();
   }, [canvas, reviewResult, getCurrentElementSnapshots, aiActions]);
 
   // Run AI Review (standard or multi-model)
@@ -270,6 +316,8 @@ export function CanvasSidebar() {
         setAnalysisStep("AI analyzing your resume...");
       }
 
+      console.log("[AI Review Client] Sending request to:", endpoint);
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -280,6 +328,8 @@ export function CanvasSidebar() {
           targetRole: "",
         }),
       });
+
+      console.log("[AI Review Client] Response received, status:", response.status);
 
       if (!response.ok) {
         const error = await response.json();
@@ -320,13 +370,19 @@ export function CanvasSidebar() {
     const obj = findElementByTypeAndText(canvas, semanticType, textContent);
 
     if (obj) {
+      // Update object coordinates to ensure selection box is accurate
+      obj.setCoords();
+
       // Select the object - this will visually highlight it
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
 
-      // Highlight in store (for visual feedback in sidebar)
-      const actualId = (obj as any).id || semanticType;
-      aiActions.highlightElement(actualId, 3000);
+      // Highlight in store (for visual feedback in sidebar) - use suggestion.id for matching
+      aiActions.highlightElement(suggestion.id, 3000);
+      console.log('[Highlight] Element found and selected, suggestion.id:', suggestion.id);
+
+      // Get bounding rect for accurate scroll position
+      const boundingRect = obj.getBoundingRect();
 
       // Scroll the canvas wrapper to show the element
       const canvasElement = canvas.getElement();
@@ -345,14 +401,33 @@ export function CanvasSidebar() {
         }
       }
 
-      if (scrollContainer && obj.top !== undefined) {
-        const zoom = canvas.getZoom();
-        const scrollTop = (obj.top * zoom) - (scrollContainer.clientHeight / 3);
+      if (scrollContainer && boundingRect) {
+        // Get canvas wrapper's position within scroll container
+        const canvasWrapper = canvasElement?.parentElement?.parentElement;
+        const wrapperRect = canvasWrapper?.getBoundingClientRect();
+        const containerRect = scrollContainer.getBoundingClientRect();
+
+        // Calculate the canvas's offset within the scrollable area
+        // containerRect.top is the visible top of the scroll container
+        // wrapperRect.top accounts for current scroll position
+        // scrollContainer.scrollTop is the current scroll offset
+        const canvasTopInScroller = wrapperRect
+          ? (wrapperRect.top - containerRect.top + scrollContainer.scrollTop)
+          : 0;
+
+        // Object's position is relative to canvas, so add canvas offset
+        const objectAbsoluteTop = canvasTopInScroller + boundingRect.top;
+
+        // Scroll to put the element in the upper third of the view
+        const targetScrollTop = objectAbsoluteTop - (scrollContainer.clientHeight / 3);
+
         scrollContainer.scrollTo({
-          top: Math.max(0, scrollTop),
+          top: Math.max(0, targetScrollTop),
           behavior: 'smooth'
         });
       }
+    } else {
+      console.warn('[Highlight] Element NOT found for suggestion:', suggestion.id, 'semanticType:', semanticType, 'currentValue preview:', textContent?.substring(0, 50));
     }
   }, [canvas, aiActions]);
 
@@ -367,19 +442,35 @@ export function CanvasSidebar() {
     const obj = findElementByTypeAndText(canvas, semanticType, textContent);
 
     if (obj && (obj as any).text !== undefined) {
-      const newValue = suggestion.suggestedValue;
-      (obj as any).set("text", newValue);
+      const currentFullText = (obj as any).text as string;
+      const currentValue = suggestion.currentValue || '';
+      const suggestedValue = suggestion.suggestedValue;
+      // Get actual element ID for undo tracking
+      const actualElementId = (obj as any).id || (obj as any).semanticType;
+
+      let newFullText: string;
+
+      // Check if currentValue is a substring of the full text
+      if (currentValue && currentFullText.includes(currentValue)) {
+        // Replace only the specific part, not the whole text
+        newFullText = currentFullText.replace(currentValue, suggestedValue);
+        console.log('[QuickApply] Replaced substring:', currentValue.substring(0, 50), '→', suggestedValue.substring(0, 50));
+      } else {
+        // Fallback: replace entire text (for cases where currentValue IS the full text)
+        newFullText = suggestedValue;
+        console.log('[QuickApply] Replaced full text');
+      }
+
+      console.log('[QuickApply] actualElementId:', actualElementId, 'originalText:', currentFullText.substring(0, 50));
+
+      (obj as any).set("text", newFullText);
       canvas.requestRenderAll();
       saveToHistory();
-      // Mark as applied with the new value for snapshot update
-      aiActions.markSuggestionApplied(suggestion.id, newValue);
+      // Mark as applied with actual element ID and original text for undo detection
+      aiActions.markSuggestionApplied(suggestion.id, newFullText, actualElementId, currentFullText);
     }
   }, [canvas, saveToHistory, aiActions]);
 
-  // Handle preview - highlight the element
-  const handlePreview = useCallback((suggestion: any) => {
-    handleHighlightSuggestion(suggestion);
-  }, [handleHighlightSuggestion]);
 
   // Handle dismiss suggestion
   const handleDismissSuggestion = useCallback((suggestion: any) => {
@@ -1515,10 +1606,9 @@ export function CanvasSidebar() {
                             suggestion={suggestion}
                             onHighlight={handleHighlightSuggestion}
                             onQuickApply={handleQuickApply}
-                            onPreview={handlePreview}
                             onDismiss={handleDismissSuggestion}
                             onRevalidate={handleRevalidateSuggestion}
-                            isHighlighted={highlightedElementId === suggestion.targetSemanticType}
+                            isHighlighted={highlightedElementId === suggestion.id}
                             isRevalidating={revalidatingIds.has(suggestion.id)}
                           />
                         ))}

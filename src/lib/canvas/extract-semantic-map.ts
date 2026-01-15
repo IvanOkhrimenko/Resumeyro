@@ -276,6 +276,7 @@ export function findElementById(canvas: Canvas, id: string): FabricObject | null
 
 /**
  * Find element by semantic type AND text content (more precise matching)
+ * Prioritizes text matching over semantic type for better accuracy
  */
 export function findElementByTypeAndText(
   canvas: Canvas,
@@ -284,54 +285,131 @@ export function findElementByTypeAndText(
 ): FabricObject | null {
   const objects = canvas.getObjects();
 
-  // If we have text content, use it for matching
-  if (textContent) {
-    const normalizedSearch = textContent.trim().toLowerCase();
+  // Filter to only text objects
+  const textObjects = objects.filter((obj) => {
+    const type = ((obj as any).type || '').toLowerCase();
+    return type === 'textbox' || type === 'i-text' || type === 'text';
+  });
 
-    // First, try to find by both semantic type AND text
+  if (!textContent) {
+    // If no text content, try semantic type only
     if (semanticType) {
-      for (const obj of objects) {
-        const objText = ((obj as any).text || '').trim().toLowerCase();
-        const objType = (obj as any).semanticType;
-
-        if (objType === semanticType && objText === normalizedSearch) {
-          return obj;
-        }
-      }
-
-      // Try partial text match with semantic type
-      for (const obj of objects) {
-        const objText = ((obj as any).text || '').trim().toLowerCase();
-        const objType = (obj as any).semanticType;
-
-        if (objType === semanticType && (objText.includes(normalizedSearch) || normalizedSearch.includes(objText))) {
-          return obj;
-        }
-      }
+      const found = findElementById(canvas, semanticType);
+      if (found) console.log('[FindElement] Found by semantic type only:', semanticType);
+      return found;
     }
+    return null;
+  }
 
-    // Fallback: try to find by text content alone (exact match)
-    for (const obj of objects) {
-      const objText = ((obj as any).text || '').trim().toLowerCase();
-      if (objText === normalizedSearch) {
-        return obj;
-      }
+  const normalizedSearch = textContent.trim().toLowerCase();
+
+  // Extract first line/sentence for matching (more reliable than full text)
+  const searchFirstLine = normalizedSearch.split('\n')[0].substring(0, 100);
+
+  // Extract first few words for fuzzy matching (handles truncation by AI)
+  const searchFirstWords = normalizedSearch.split(/\s+/).slice(0, 8).join(' ');
+
+  // 1. Exact match by full text (regardless of semantic type - text is more reliable)
+  for (const obj of textObjects) {
+    const objText = ((obj as any).text || '').trim().toLowerCase();
+    if (objText === normalizedSearch) {
+      console.log('[FindElement] Exact text match found');
+      return obj;
     }
+  }
 
-    // Fallback: partial text match
-    for (const obj of objects) {
+  // 2. Text starts with same first line
+  for (const obj of textObjects) {
+    const objText = ((obj as any).text || '').trim().toLowerCase();
+    const objFirstLine = objText.split('\n')[0].substring(0, 100);
+
+    if (objFirstLine === searchFirstLine && searchFirstLine.length > 20) {
+      console.log('[FindElement] First line match found');
+      return obj;
+    }
+  }
+
+  // 3. First few words match (handles AI truncation)
+  if (searchFirstWords.length > 15) {
+    for (const obj of textObjects) {
       const objText = ((obj as any).text || '').trim().toLowerCase();
-      if (objText.includes(normalizedSearch) || normalizedSearch.includes(objText)) {
+      const objFirstWords = objText.split(/\s+/).slice(0, 8).join(' ');
+
+      if (objFirstWords === searchFirstWords) {
+        console.log('[FindElement] First words match found');
         return obj;
       }
     }
   }
 
-  // If no text content, try semantic type only
+  // 4. Search text is contained within object text (object is longer)
+  // This handles cases where AI truncated the text
+  for (const obj of textObjects) {
+    const objText = ((obj as any).text || '').trim().toLowerCase();
+
+    // Only match if object text is longer and contains the search
+    if (objText.length >= normalizedSearch.length && objText.includes(normalizedSearch)) {
+      console.log('[FindElement] Search contained in object text');
+      return obj;
+    }
+  }
+
+  // 5. Object text is contained in search text (AI included extra context)
+  for (const obj of textObjects) {
+    const objText = ((obj as any).text || '').trim().toLowerCase();
+
+    // Skip very short texts to avoid false matches
+    if (objText.length < 30) continue;
+
+    if (normalizedSearch.includes(objText)) {
+      console.log('[FindElement] Object text contained in search');
+      return obj;
+    }
+  }
+
+  // 6. Fuzzy match - significant word overlap
+  const searchWords = new Set(normalizedSearch.split(/\s+/).filter(w => w.length > 3));
+  if (searchWords.size >= 5) {
+    let bestMatch: FabricObject | null = null;
+    let bestScore = 0;
+
+    for (const obj of textObjects) {
+      const objText = ((obj as any).text || '').trim().toLowerCase();
+      const objWords = new Set(objText.split(/\s+/).filter(w => w.length > 3));
+
+      if (objWords.size < 5) continue;
+
+      // Calculate overlap score
+      let overlap = 0;
+      for (const word of searchWords) {
+        if (objWords.has(word)) overlap++;
+      }
+
+      const score = overlap / Math.min(searchWords.size, objWords.size);
+
+      // Require at least 60% word overlap
+      if (score > 0.6 && score > bestScore) {
+        bestScore = score;
+        bestMatch = obj;
+      }
+    }
+
+    if (bestMatch) {
+      console.log('[FindElement] Fuzzy match found with score:', bestScore.toFixed(2));
+      return bestMatch;
+    }
+  }
+
+  // 7. Last resort: semantic type only
   if (semanticType) {
-    return findElementById(canvas, semanticType);
+    const found = findElementById(canvas, semanticType);
+    if (found) {
+      console.log('[FindElement] Fallback to semantic type:', semanticType);
+      return found;
+    }
   }
 
+  console.log('[FindElement] No match found for text:', normalizedSearch.substring(0, 50) + '...');
   return null;
 }
 
