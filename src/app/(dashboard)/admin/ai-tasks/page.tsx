@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Image,
   Languages,
+  Palette,
   ChevronDown,
   Save,
   Loader2,
@@ -82,6 +83,7 @@ const taskIcons: Record<string, React.ElementType> = {
   RESUME_GENERATION: Sparkles,
   TEXT_IMPROVEMENT: MessageSquareText,
   RESUME_REVIEW: ClipboardCheck,
+  STYLE_FORMATTING: Palette,
   IMAGE_GENERATION: Image,
   TRANSLATION: Languages,
 };

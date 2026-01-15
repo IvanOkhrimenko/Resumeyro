@@ -20,13 +20,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Store userId for TypeScript type narrowing
+    const userId = session.user.id;
+
     // Admins have no limits
     const isAdmin = isAdminEmail(session.user.email);
 
     if (!isAdmin) {
       // Check usage limits for regular users
       const subscription = await db.subscription.findUnique({
-        where: { userId: session.user.id },
+        where: { userId: userId },
       });
 
       const plan = subscription?.plan || "FREE";
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
 
         const usage = await db.usageRecord.findFirst({
           where: {
-            userId: session.user.id,
+            userId: userId,
             type: "AI_GENERATION",
             periodStart: { gte: startOfMonth },
             periodEnd: { lte: endOfMonth },
@@ -97,14 +100,14 @@ export async function POST(req: Request) {
         db.usageRecord.upsert({
           where: {
             userId_type_periodStart_periodEnd: {
-              userId: session.user.id,
+              userId: userId,
               type: "AI_GENERATION",
               periodStart: startOfMonth,
               periodEnd: endOfMonth,
             },
           },
           create: {
-            userId: session.user.id,
+            userId: userId,
             type: "AI_GENERATION",
             count: 1,
             periodStart: startOfMonth,

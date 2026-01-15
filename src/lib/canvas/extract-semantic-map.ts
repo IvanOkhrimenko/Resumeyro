@@ -368,14 +368,14 @@ export function findElementByTypeAndText(
   }
 
   // 6. Fuzzy match - significant word overlap
-  const searchWords = new Set(normalizedSearch.split(/\s+/).filter(w => w.length > 3));
+  const searchWords = new Set(normalizedSearch.split(/\s+/).filter((w: string) => w.length > 3));
   if (searchWords.size >= 5) {
     let bestMatch: FabricObject | null = null;
     let bestScore = 0;
 
     for (const obj of textObjects) {
       const objText = ((obj as any).text || '').trim().toLowerCase();
-      const objWords = new Set(objText.split(/\s+/).filter(w => w.length > 3));
+      const objWords = new Set(objText.split(/\s+/).filter((w: string) => w.length > 3));
 
       if (objWords.size < 5) continue;
 

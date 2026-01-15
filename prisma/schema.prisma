@@ -183,6 +183,7 @@ enum AITaskType {
   RESUME_GENERATION   // Generating resume content from prompts
   TEXT_IMPROVEMENT    // Improving/rewriting text
   RESUME_REVIEW       // Reviewing and scoring resumes
+  STYLE_FORMATTING    // Creative style and formatting suggestions (higher creativity)
   IMAGE_GENERATION    // Generating images (future)
   TRANSLATION         // Translating content
 }
@@ -302,6 +303,24 @@ model SystemSetting {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+// ==================== FEATURE FLAGS ====================
+
+model FeatureFlag {
+  id          String     @id @default(cuid())
+  key         String     @unique
+  name        String
+  description String?
+
+  isEnabled   Boolean    @default(true)
+  // Roles that have access even when feature is disabled globally
+  allowedRoles UserRole[] @default([])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@index([key])
 }

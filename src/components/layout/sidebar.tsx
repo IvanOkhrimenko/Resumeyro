@@ -14,6 +14,7 @@ import {
   Wand2,
   Shield,
   Cpu,
+  ToggleLeft,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const adminNavigation = [
     { name: t("adminSettings"), href: "/admin/settings", icon: Shield },
     { name: t("aiTasks"), href: "/admin/ai-tasks", icon: Cpu },
+    { name: t("features"), href: "/admin/features", icon: ToggleLeft },
   ];
 
   useEffect(() => {

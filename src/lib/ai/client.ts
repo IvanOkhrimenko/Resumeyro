@@ -126,26 +126,23 @@ export async function generateTextWithRetry(
 }
 
 /**
- * Wrapper for streamText with automatic retry
- * Note: Only retries on initial connection, not mid-stream
+ * Wrapper for streamText
+ * Note: streamText returns synchronously, retry logic doesn't apply to streams
  */
-export async function streamTextWithRetry(
+export function streamTextWithRetry(
   params: Parameters<typeof aiStreamText>[0],
-  retryOptions?: AIRetryOptions
+  _retryOptions?: AIRetryOptions
 ): ReturnType<typeof aiStreamText> {
-  return withAIRetry(
-    () => aiStreamText(params),
-    { operationName: "streamText", ...retryOptions }
-  );
+  return aiStreamText(params);
 }
 
 /**
  * Wrapper for generateObject with automatic retry
  */
-export async function generateObjectWithRetry<T>(
-  params: Parameters<typeof aiGenerateObject<T>>[0],
+export async function generateObjectWithRetry(
+  params: Parameters<typeof aiGenerateObject>[0],
   retryOptions?: AIRetryOptions
-): ReturnType<typeof aiGenerateObject<T>> {
+): Promise<Awaited<ReturnType<typeof aiGenerateObject>>> {
   return withAIRetry(
     () => aiGenerateObject(params),
     { operationName: "generateObject", ...retryOptions }
@@ -309,6 +306,7 @@ export const taskModels = {
   generation: () => getModelForTask("RESUME_GENERATION"),
   textImprovement: () => getModelForTask("TEXT_IMPROVEMENT"),
   review: () => getModelForTask("RESUME_REVIEW"),
+  styleFormatting: () => getModelForTask("STYLE_FORMATTING"),
   translation: () => getModelForTask("TRANSLATION"),
   imageGeneration: () => getModelForTask("IMAGE_GENERATION"),
 };

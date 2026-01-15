@@ -218,7 +218,7 @@ export function TextPropertiesPanel() {
         previousHeight: previousHeight,
         previousTop: previousTop,
         newHeight: newHeight,
-      });
+      } as any);
       // saveToHistory is handled by object:modified handler - no need to call here
     }, 0);
   }, [canvas, selectedTextObject]);

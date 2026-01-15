@@ -7,6 +7,7 @@ import { useCanvasStore } from "@/stores/canvas-store";
 import { useAIFeaturesStore } from "@/stores/ai-features-store";
 import { nanoid } from "nanoid";
 import { AITextAssistant } from "./ai-text-assistant";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import {
   SpatialHashIndex,
   computeGuidesAndSnaps,
@@ -77,7 +78,7 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
 
   // Guides system refs
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const spatialIndexRef = useRef<SpatialHashIndex>(new SpatialHashIndex(100));
+  const spatialIndexRef = useRef<SpatialHashIndex>(new SpatialHashIndex());
   const lastSnapXRef = useRef<LastSnap | null>(null);
   const lastSnapYRef = useRef<LastSnap | null>(null);
   const currentGuidesRef = useRef<Guide[]>([]);
@@ -298,6 +299,9 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
     clearGuidesOverlayRef.current = clearGuidesOverlay;
   }, [buildSpatialIndex, renderGuidesOverlay, clearGuidesOverlay]);
 
+  // Feature flags
+  const { isAITextImprovementEnabled } = useFeatureFlags();
+
   // AI Assistant state
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedText, setSelectedText] = useState("");
@@ -372,7 +376,7 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
         previousHeight,
         previousTop,
         newHeight,
-      });
+      } as any);
     } else {
       canvas.renderAll();
       saveToHistory();
@@ -2374,17 +2378,19 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
       </div>
 
       {/* AI Text Assistant */}
-      <AITextAssistant
-        isOpen={showAIAssistant}
-        onClose={() => {
-          setShowAIAssistant(false);
-          selectedTextObjectRef.current = null;
-        }}
-        selectedText={selectedText}
-        onApply={handleApplyAIText}
-        position={aiAssistantPosition}
-        canvasRect={canvasRect}
-      />
+      {isAITextImprovementEnabled && (
+        <AITextAssistant
+          isOpen={showAIAssistant}
+          onClose={() => {
+            setShowAIAssistant(false);
+            selectedTextObjectRef.current = null;
+          }}
+          selectedText={selectedText}
+          onApply={handleApplyAIText}
+          position={aiAssistantPosition}
+          canvasRect={canvasRect}
+        />
+      )}
     </div>
   );
 }

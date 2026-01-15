@@ -81,7 +81,7 @@ export function handleApiError(
   if (error instanceof ZodError) {
     return apiError("Validation error", 400, {
       code: "VALIDATION_ERROR",
-      details: error.errors,
+      details: error.issues,
     });
   }
 

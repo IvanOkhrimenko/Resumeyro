@@ -29,12 +29,14 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
     const resume = await safeDbOperation(
       () =>
         db.resume.findFirst({
           where: {
             id,
-            userId: session.user.id,
+            userId,
           },
           include: {
             template: true,
@@ -70,6 +72,8 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
     const body = await req.json();
     const validatedData = updateResumeSchema.parse(body);
 
@@ -79,7 +83,7 @@ export async function PUT(
         db.resume.findFirst({
           where: {
             id,
-            userId: session.user.id,
+            userId,
           },
         }),
       { operationName: "check resume ownership" }
@@ -165,13 +169,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
     // Check ownership
     const resume = await safeDbOperation(
       () =>
         db.resume.findFirst({
           where: {
             id,
-            userId: session.user.id,
+            userId,
           },
         }),
       { operationName: "check resume ownership for delete" }

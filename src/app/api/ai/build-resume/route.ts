@@ -135,12 +135,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // Store userId for TypeScript type narrowing
+    const userId = session.user.id;
+
     // Check usage limits (same as AI generation)
     const isAdmin = isAdminEmail(session.user.email);
 
     if (!isAdmin) {
       const subscription = await db.subscription.findUnique({
-        where: { userId: session.user.id },
+        where: { userId: userId },
       });
 
       const plan = subscription?.plan || "FREE";
@@ -154,7 +157,7 @@ export async function POST(req: Request) {
 
         const usage = await db.usageRecord.findFirst({
           where: {
-            userId: session.user.id,
+            userId: userId,
             type: "AI_GENERATION",
             periodStart: { gte: startOfMonth },
             periodEnd: { lte: endOfMonth },
@@ -257,12 +260,12 @@ export async function POST(req: Request) {
                         {
                           type: "image",
                           image: new Uint8Array(compressedImage),
-                          mimeType: "image/jpeg",
+                          mediaType: "image/jpeg",
                         },
                       ],
                     },
                   ],
-                  maxTokens: 4000,
+                  maxOutputTokens: 4000,
                   temperature: 0.1,
                 });
 
@@ -327,12 +330,12 @@ export async function POST(req: Request) {
                   {
                     type: "image",
                     image: imageData,
-                    mimeType: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                    mediaType: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
                   },
                 ],
               },
             ],
-            maxTokens: 4000,
+            maxOutputTokens: 4000,
             temperature: 0.1,
           });
 
@@ -377,12 +380,12 @@ export async function POST(req: Request) {
                 {
                   type: "image",
                   image: imageData,
-                  mimeType: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                  mediaType: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
                 },
               ],
             },
           ],
-          maxTokens: 2000,
+          maxOutputTokens: 2000,
           temperature: 0.2,
         });
 
@@ -538,7 +541,7 @@ export async function POST(req: Request) {
         // Create the resume
         const newResume = await tx.resume.create({
           data: {
-            userId: session.user.id,
+            userId: userId,
             title: parsedResume.personalInfo.title
               ? `${parsedResume.personalInfo.fullName} - ${parsedResume.personalInfo.title}`
               : parsedResume.personalInfo.fullName,
@@ -552,14 +555,14 @@ export async function POST(req: Request) {
         await tx.usageRecord.upsert({
           where: {
             userId_type_periodStart_periodEnd: {
-              userId: session.user.id,
+              userId: userId,
               type: "AI_GENERATION",
               periodStart: startOfMonth,
               periodEnd: endOfMonth,
             },
           },
           create: {
-            userId: session.user.id,
+            userId: userId,
             type: "AI_GENERATION",
             count: 1,
             periodStart: startOfMonth,

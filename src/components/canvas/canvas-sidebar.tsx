@@ -35,6 +35,7 @@ import { SuggestionCard, ScoreBadge, StrengthBadge, MissingSectionCard } from ".
 import { extractSemanticMap, formatSemanticMapForPrompt, findElementByTypeAndText } from "@/lib/canvas/extract-semantic-map";
 import { applyFullFormatting } from "@/lib/canvas/apply-formatting";
 import { cn } from "@/lib/utils";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 // Optimized hooks and form components
 import {
   useCanvasActions,
@@ -126,7 +127,7 @@ export function CanvasSidebar() {
   const { canvas, saveToHistory, requestCanvasResize } = useCanvasActions();
 
   // AI state - batched subscription (values only)
-  const { reviewResult, reviewError, highlightedElementId, revalidatingIds, formattingResult } = useAIReviewState();
+  const { reviewResult, reviewError, highlightedElementId, revalidatingIds, formattingResult, formattingError } = useAIReviewState();
 
   // AI actions - batched subscription (functions only)
   const aiActions = useAIActions();
@@ -137,6 +138,9 @@ export function CanvasSidebar() {
   const getCurrentElementSnapshots = useElementSnapshots(canvas);
   const extractCanvasContext = useCanvasContext(canvas);
   const hasExistingPhoto = usePhotoExists(canvas);
+
+  // Feature flags
+  const { isSmartFormattingEnabled, isAIReviewEnabled, isMultiModelReviewEnabled } = useFeatureFlags();
 
   // Local loading states (more reliable than Zustand for frequent updates)
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -561,11 +565,14 @@ export function CanvasSidebar() {
   const runAIFormatting = useCallback(async () => {
     if (!canvas || formattingLoading) return;
 
+    console.log("[Formatting] Starting...");
     setFormattingLoading(true);
     aiActions.setFormattingError(null);
 
     try {
       const semanticMap = extractSemanticMap(canvas);
+      console.log("[Formatting] Semantic map entries:", semanticMap.entries.length);
+      console.log("[Formatting] Section headers:", semanticMap.sectionHeaders);
 
       const response = await fetch("/api/ai/format", {
         method: "POST",
@@ -576,15 +583,19 @@ export function CanvasSidebar() {
         }),
       });
 
+      console.log("[Formatting] Response status:", response.status);
+
       if (!response.ok) {
         const error = await response.json();
+        console.error("[Formatting] API error:", error);
         throw new Error(error.error || "Failed to analyze formatting");
       }
 
       const result = await response.json();
+      console.log("[Formatting] Result:", result);
       aiActions.setFormattingResult(result);
     } catch (error) {
-      console.error("AI Formatting error:", error);
+      console.error("[Formatting] Error:", error);
       aiActions.setFormattingError(error instanceof Error ? error.message : "Failed to analyze formatting");
     } finally {
       setFormattingLoading(false);
@@ -1289,26 +1300,28 @@ export function CanvasSidebar() {
           <FileText className="w-4 h-4" />
           <span>Sections</span>
         </button>
-        <button
-          onClick={() => setActiveTab("ai-review")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative",
-            activeTab === "ai-review"
-              ? "text-zinc-900 dark:text-zinc-50 border-b-2 border-zinc-900 dark:border-zinc-50 -mb-px"
-              : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
-          )}
-        >
-          <Brain className="w-4 h-4" />
-          <span>AI Review</span>
-          {reviewResult && reviewResult.suggestions.length > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full" />
-          )}
-        </button>
+        {isAIReviewEnabled && (
+          <button
+            onClick={() => setActiveTab("ai-review")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative",
+              activeTab === "ai-review"
+                ? "text-zinc-900 dark:text-zinc-50 border-b-2 border-zinc-900 dark:border-zinc-50 -mb-px"
+                : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+            )}
+          >
+            <Brain className="w-4 h-4" />
+            <span>AI Review</span>
+            {reviewResult && reviewResult.suggestions.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-          {activeTab === "ai-review" ? (
+          {activeTab === "ai-review" && isAIReviewEnabled ? (
             <div className="p-3 space-y-4">
               {/* AI Review Content */}
               {!reviewResult && !reviewLoading && (
@@ -1324,7 +1337,7 @@ export function CanvasSidebar() {
                   </p>
 
                   {/* Multi-Model Toggle (Premium Feature) */}
-                  {multiModelAvailable && (
+                  {multiModelAvailable && isMultiModelReviewEnabled && (
                     <div className="mb-4 mx-4">
                       <button
                         onClick={() => setMultiModelEnabled(!multiModelEnabled)}
@@ -1768,66 +1781,84 @@ export function CanvasSidebar() {
                   )}
 
                   {/* Smart Formatting Section */}
-                  <div className="pt-4 border-t border-zinc-200 dark:border-zinc-700">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Palette className="w-4 h-4 text-fuchsia-600" />
-                      <h5 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
-                        Smart Formatting
-                      </h5>
-                    </div>
-
-                    {!formattingResult && !formattingLoading && (
-                      <Button
-                        onClick={runAIFormatting}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Analyze & Suggest Style
-                      </Button>
-                    )}
-
-                    {formattingLoading && (
-                      <div className="flex items-center justify-center gap-2 py-3 text-sm text-zinc-500">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Analyzing style...</span>
+                  {isSmartFormattingEnabled && (
+                    <div className="pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Palette className="w-4 h-4 text-fuchsia-600" />
+                        <h5 className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+                          Smart Formatting
+                        </h5>
                       </div>
-                    )}
 
-                    {formattingResult && (
-                      <div className="p-3 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-fuchsia-200 dark:bg-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300">
-                            {formattingResult.detectedIndustry}
-                          </span>
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300">
-                            {formattingResult.detectedLevel}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-3">
-                          {formattingResult.rationale}
-                        </p>
+                      {!formattingResult && !formattingLoading && !formattingError && (
                         <Button
+                          onClick={runAIFormatting}
                           variant="outline"
-                          size="sm"
                           className="w-full"
-                          onClick={() => {
-                            if (canvas && formattingResult) {
-                              applyFullFormatting(canvas, formattingResult, {
-                                applyColors: true,
-                                applyFonts: true,
-                                applySpacing: true,
-                                reorderSections: false, // Optional: user can enable this
-                              });
-                              saveToHistory();
-                            }
-                          }}
                         >
-                          Apply Recommended Style
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Analyze & Suggest Style
                         </Button>
-                      </div>
-                    )}
-                  </div>
+                      )}
+
+                      {formattingLoading && (
+                        <div className="flex items-center justify-center gap-2 py-3 text-sm text-zinc-500">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Analyzing style...</span>
+                        </div>
+                      )}
+
+                      {formattingError && !formattingLoading && (
+                        <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 mb-3">
+                          <p className="text-xs text-rose-600 dark:text-rose-400">
+                            {formattingError}
+                          </p>
+                          <Button
+                            onClick={runAIFormatting}
+                            variant="outline"
+                            size="sm"
+                            className="w-full mt-2"
+                          >
+                            Try Again
+                          </Button>
+                        </div>
+                      )}
+
+                      {formattingResult && (
+                        <div className="p-3 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-fuchsia-200 dark:bg-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300">
+                              {formattingResult.detectedIndustry}
+                            </span>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300">
+                              {formattingResult.detectedLevel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-3">
+                            {formattingResult.rationale}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => {
+                              if (canvas && formattingResult) {
+                                applyFullFormatting(canvas, formattingResult, {
+                                  applyColors: true,
+                                  applyFonts: true,
+                                  applySpacing: true,
+                                  reorderSections: false, // Optional: user can enable this
+                                });
+                                saveToHistory();
+                              }
+                            }}
+                          >
+                            Apply Recommended Style
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

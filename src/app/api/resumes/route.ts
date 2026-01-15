@@ -21,10 +21,12 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
     const resumes = await safeDbOperation(
       () =>
         db.resume.findMany({
-          where: { userId: session.user.id },
+          where: { userId },
           orderBy: { updatedAt: "desc" },
           select: {
             id: true,
@@ -64,6 +66,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = session.user.id;
+
     const body = await req.json();
     const validatedData = createResumeSchema.parse(body);
 
@@ -73,11 +77,11 @@ export async function POST(req: Request) {
     if (!isAdmin) {
       // Check resume limit for regular users
       const subscription = await db.subscription.findUnique({
-        where: { userId: session.user.id },
+        where: { userId },
       });
 
       const resumeCount = await db.resume.count({
-        where: { userId: session.user.id },
+        where: { userId },
       });
 
       const limits = {
@@ -114,7 +118,7 @@ export async function POST(req: Request) {
         // Create the resume
         const newResume = await tx.resume.create({
           data: {
-            userId: session.user.id,
+            userId: userId,
             title: validatedData.title,
             templateId: validatedData.templateId,
             region: validatedData.region,
@@ -126,14 +130,14 @@ export async function POST(req: Request) {
         await tx.usageRecord.upsert({
           where: {
             userId_type_periodStart_periodEnd: {
-              userId: session.user.id,
+              userId: userId,
               type: "RESUME_CREATED",
               periodStart,
               periodEnd,
             },
           },
           create: {
-            userId: session.user.id,
+            userId: userId,
             type: "RESUME_CREATED",
             count: 1,
             periodStart,

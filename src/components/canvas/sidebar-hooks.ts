@@ -93,6 +93,7 @@ export function useAIReviewState() {
       highlightedElementId: state.highlightedElementId,
       revalidatingIds: state.revalidatingIds,
       formattingResult: state.formattingResult,
+      formattingError: state.formattingError,
     }))
   );
 }
@@ -113,6 +114,7 @@ export function useAIActions() {
       updateSuggestionAfterRevalidation: state.updateSuggestionAfterRevalidation,
       setFormattingResult: state.setFormattingResult,
       setFormattingError: state.setFormattingError,
+      clearFormatting: state.clearFormatting,
       revalidateAppliedSuggestions: state.revalidateAppliedSuggestions,
     }))
   );

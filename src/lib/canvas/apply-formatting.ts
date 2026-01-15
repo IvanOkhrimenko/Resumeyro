@@ -14,13 +14,80 @@ interface ApplyOptions {
   reorderSections?: boolean;
 }
 
+/**
+ * Infer semantic type from element properties when not explicitly set
+ */
+function inferSemanticType(obj: FabricObject): string | null {
+  const anyObj = obj as any;
+  const text = (anyObj.text || "").toLowerCase().trim();
+  const fontSize = anyObj.fontSize || 12;
+  const fontWeight = anyObj.fontWeight || "normal";
+  const top = obj.top || 0;
+  const charSpacing = anyObj.charSpacing || 0;
+  const isUpperCase = text === text.toUpperCase() && text.length > 2;
+  const isBold = fontWeight === "bold" || fontWeight >= 600;
+
+  // Name - large font at top
+  if (fontSize >= 20 && top < 100) {
+    return "name";
+  }
+
+  // Title/Role - medium font near top, not uppercase
+  if (fontSize >= 12 && fontSize < 20 && top < 120 && !isUpperCase) {
+    return "title";
+  }
+
+  // Section headers - uppercase with spacing or bold
+  if (isUpperCase && (charSpacing > 20 || isBold) && text.length < 40) {
+    // Detect specific sections
+    if (text.includes("experience") || text.includes("work")) return "experience_section";
+    if (text.includes("education")) return "education_section";
+    if (text.includes("skill")) return "skills_section";
+    if (text.includes("summary") || text.includes("profile") || text.includes("about")) return "summary";
+    if (text.includes("project")) return "projects_section";
+    if (text.includes("certif")) return "certifications_section";
+    if (text.includes("language")) return "languages_section";
+    return "section_header"; // Generic section
+  }
+
+  // Contact info by content
+  if (text.includes("@") && text.includes(".")) return "email";
+  if (/[\+]?\d[\d\s\-\(\)]{7,}/.test(text)) return "phone";
+  if (text.includes("linkedin")) return "linkedin";
+  if (text.includes("github")) return "github";
+  if (text.includes("http") || text.includes("www.")) return "website";
+
+  // Date patterns
+  if (/\d{4}\s*[-–—]\s*(\d{4}|present|current|now)/i.test(text) ||
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b.*\d{4}/i.test(text)) {
+    return "experience_dates";
+  }
+
+  // Job titles - bold, not too long
+  if (isBold && text.length < 60 && !isUpperCase && top > 100) {
+    return "experience_title";
+  }
+
+  // Descriptions - longer text
+  if (text.length > 100) {
+    return "experience_description";
+  }
+
+  // Default body text
+  if (text.length > 20) {
+    return "body_text";
+  }
+
+  return null;
+}
+
 // Semantic type categories for styling
 const semanticCategories = {
-  heading: ["name", "experience_section", "education_section", "skills_section", "certifications_section", "projects_section"],
+  heading: ["name", "experience_section", "education_section", "skills_section", "certifications_section", "projects_section", "languages_section", "section_header"],
   title: ["title", "experience_title", "education_degree", "certification_name", "project_name"],
   subtitle: ["experience_company", "education_institution", "certification_issuer"],
   dates: ["experience_dates", "education_dates", "certification_date"],
-  body: ["summary", "experience_description", "project_description", "skill_list", "skill_category"],
+  body: ["summary", "experience_description", "project_description", "skill_list", "skill_category", "body_text"],
   contact: ["email", "phone", "location", "linkedin", "github", "website", "portfolio", "twitter", "telegram"],
 };
 
@@ -41,7 +108,8 @@ const sectionSemanticTypes: Record<string, string[]> = {
 /**
  * Get the category for a semantic type
  */
-function getCategoryForSemanticType(semanticType: string): keyof typeof semanticCategories | null {
+function getCategoryForSemanticType(semanticType: string | undefined): keyof typeof semanticCategories | null {
+  if (!semanticType) return null;
   for (const [category, types] of Object.entries(semanticCategories)) {
     if (types.some(t => semanticType === t || semanticType.startsWith(t))) {
       return category as keyof typeof semanticCategories;
@@ -53,7 +121,8 @@ function getCategoryForSemanticType(semanticType: string): keyof typeof semantic
 /**
  * Get the section for a semantic type
  */
-function getSectionForSemanticType(semanticType: string): string | null {
+function getSectionForSemanticType(semanticType: string | undefined): string | null {
+  if (!semanticType) return null;
   for (const [section, types] of Object.entries(sectionSemanticTypes)) {
     if (types.some(t => semanticType === t || semanticType.startsWith(t))) {
       return section;
@@ -74,12 +143,30 @@ export function applyColorStyling(
     return !anyObj._isPageBreak && !anyObj.isBackground && obj.selectable !== false;
   });
 
+  console.log("[ApplyFormatting] Total objects:", objects.length);
+
+  // Log all semantic types for debugging
+  const explicitTypes = objects.map((obj: FabricObject) => (obj as any).semanticType).filter(Boolean);
+  console.log("[ApplyFormatting] Explicit semantic types:", [...new Set(explicitTypes)]);
+
+  let changedCount = 0;
   objects.forEach((obj: FabricObject) => {
     const anyObj = obj as any;
-    if (!anyObj.semanticType) return;
 
-    const category = getCategoryForSemanticType(anyObj.semanticType);
-    if (!category) return;
+    // Use explicit semantic type or infer from properties
+    const semanticType = anyObj.semanticType || inferSemanticType(obj);
+    if (!semanticType) return;
+
+    const category = getCategoryForSemanticType(semanticType);
+    if (!category) {
+      // Only log if we had an explicit type that didn't match
+      if (anyObj.semanticType) {
+        console.log("[ApplyFormatting] No category for explicit type:", anyObj.semanticType);
+      }
+      return;
+    }
+
+    console.log("[ApplyFormatting] Processing:", semanticType, "-> category:", category);
 
     let newColor: string | undefined;
 
@@ -105,15 +192,56 @@ export function applyColorStyling(
     }
 
     if (newColor && anyObj.fill !== newColor) {
+      console.log("[ApplyFormatting] Changing color for", anyObj.semanticType, ":", anyObj.fill, "->", newColor);
       obj.set("fill", newColor);
+      changedCount++;
     }
   });
 
+  console.log("[ApplyFormatting] Total colors changed:", changedCount);
   canvas.requestRenderAll();
 }
 
 /**
- * Apply font styling to canvas elements
+ * Apply only font family (no size changes) - safe for layout
+ */
+export function applyFontFamilyOnly(
+  canvas: Canvas,
+  fonts: FormattingResult["styling"]["fonts"]
+): void {
+  const objects = canvas.getObjects().filter((obj: FabricObject) => {
+    const anyObj = obj as any;
+    return !anyObj._isPageBreak && !anyObj.isBackground && obj.selectable !== false;
+  });
+
+  let changedCount = 0;
+  objects.forEach((obj: FabricObject) => {
+    const anyObj = obj as any;
+    if (!(obj instanceof IText) && !(obj instanceof Textbox)) return;
+
+    // Use explicit semantic type or infer from properties
+    const semanticType = anyObj.semanticType || inferSemanticType(obj);
+    if (!semanticType) return;
+
+    const category = getCategoryForSemanticType(semanticType);
+    if (!category) return;
+
+    // Apply font family based on category
+    const isHeadingLike = category === "heading" || category === "title";
+    const fontFamily = isHeadingLike ? fonts.heading : fonts.body;
+
+    if (anyObj.fontFamily !== fontFamily) {
+      obj.set("fontFamily", fontFamily);
+      changedCount++;
+    }
+  });
+
+  console.log("[ApplyFormatting] Font families changed:", changedCount);
+  canvas.requestRenderAll();
+}
+
+/**
+ * Apply font styling to canvas elements (includes size changes - may break layout)
  */
 export function applyFontStyling(
   canvas: Canvas,
@@ -127,10 +255,13 @@ export function applyFontStyling(
 
   objects.forEach((obj: FabricObject) => {
     const anyObj = obj as any;
-    if (!anyObj.semanticType) return;
     if (!(obj instanceof IText) && !(obj instanceof Textbox)) return;
 
-    const category = getCategoryForSemanticType(anyObj.semanticType);
+    // Use explicit semantic type or infer from properties
+    const semanticType = anyObj.semanticType || inferSemanticType(obj);
+    if (!semanticType) return;
+
+    const category = getCategoryForSemanticType(semanticType);
     if (!category) return;
 
     // Apply font family
@@ -144,11 +275,11 @@ export function applyFontStyling(
     // Apply font size based on semantic type
     let fontSize: number | undefined;
 
-    if (anyObj.semanticType === "name") {
+    if (semanticType === "name") {
       fontSize = fontSizes.name;
-    } else if (anyObj.semanticType === "title") {
+    } else if (semanticType === "title") {
       fontSize = fontSizes.title;
-    } else if (anyObj.semanticType.includes("_section")) {
+    } else if (semanticType.includes("_section") || semanticType === "section_header") {
       fontSize = fontSizes.sectionHeader;
     } else if (category === "title") {
       fontSize = fontSizes.jobTitle;
@@ -164,6 +295,72 @@ export function applyFontStyling(
   });
 
   canvas.requestRenderAll();
+}
+
+/**
+ * Recalculate vertical positions after font/size changes
+ * This prevents text overlap by adjusting element positions based on their new heights
+ */
+export function recalculateLayout(canvas: Canvas, spacing: number = 8): void {
+  const objects = canvas.getObjects().filter((obj: FabricObject) => {
+    const anyObj = obj as any;
+    return !anyObj._isPageBreak && !anyObj.isBackground && obj.selectable !== false;
+  });
+
+  if (objects.length === 0) return;
+
+  // Sort objects by their current top position
+  objects.sort((a, b) => (a.top || 0) - (b.top || 0));
+
+  // Group objects by approximate vertical position (same "row")
+  const rows: FabricObject[][] = [];
+  let currentRow: FabricObject[] = [];
+  let lastTop = -Infinity;
+  const ROW_THRESHOLD = 15; // Objects within 15px are considered same row
+
+  objects.forEach((obj) => {
+    const top = obj.top || 0;
+    if (top - lastTop > ROW_THRESHOLD && currentRow.length > 0) {
+      rows.push(currentRow);
+      currentRow = [];
+    }
+    currentRow.push(obj);
+    lastTop = top;
+  });
+  if (currentRow.length > 0) {
+    rows.push(currentRow);
+  }
+
+  console.log("[RecalculateLayout] Found", rows.length, "rows");
+
+  // Recalculate positions row by row
+  let currentY = rows[0]?.[0]?.top || 50; // Start from first element's position
+
+  rows.forEach((row, rowIndex) => {
+    // Find the tallest element in this row
+    let maxHeight = 0;
+    row.forEach((obj) => {
+      // Update object coordinates to get accurate dimensions
+      obj.setCoords();
+      const height = (obj.height || 0) * (obj.scaleY || 1);
+      if (height > maxHeight) maxHeight = height;
+    });
+
+    // Move all objects in this row to currentY
+    row.forEach((obj) => {
+      const currentTop = obj.top || 0;
+      if (Math.abs(currentTop - currentY) > 2) {
+        obj.set("top", currentY);
+        obj.setCoords();
+      }
+    });
+
+    // Move to next row position
+    currentY += maxHeight + spacing;
+  });
+
+  canvas.requestRenderAll();
+  console.log("[RecalculateLayout] Layout recalculated");
 }
 
 /**
@@ -183,9 +380,10 @@ export function applySpacingStyling(
 
   objects.forEach((obj: FabricObject) => {
     const anyObj = obj as any;
-    if (!anyObj.semanticType) return;
+    const semanticType = anyObj.semanticType || inferSemanticType(obj);
+    if (!semanticType) return;
 
-    const section = getSectionForSemanticType(anyObj.semanticType);
+    const section = getSectionForSemanticType(semanticType);
     if (section) {
       if (!sections.has(section)) {
         sections.set(section, []);
@@ -198,7 +396,8 @@ export function applySpacingStyling(
   objects.forEach((obj: FabricObject) => {
     if (obj instanceof Textbox) {
       const anyObj = obj as any;
-      const category = getCategoryForSemanticType(anyObj.semanticType);
+      const semanticType = anyObj.semanticType || inferSemanticType(obj);
+      const category = getCategoryForSemanticType(semanticType);
 
       if (category === "body") {
         obj.set("lineHeight", spacing.lineHeight);
@@ -398,7 +597,8 @@ export function applyFullFormatting(
   }
 
   if (applyFonts) {
-    applyFontStyling(canvas, formatting.styling.fonts, formatting.styling.fontSizes);
+    // Only apply font family, not sizes - size changes break layout
+    applyFontFamilyOnly(canvas, formatting.styling.fonts);
   }
 
   if (applySpacing) {

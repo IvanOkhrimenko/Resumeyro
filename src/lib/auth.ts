@@ -5,6 +5,19 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
 
+/**
+ * Session with guaranteed user and id (after authentication check)
+ */
+export interface AuthenticatedSession {
+  user: {
+    id: string;
+    email?: string | null;
+    name?: string | null;
+    image?: string | null;
+  };
+  expires: string;
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
@@ -69,3 +82,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
 });
+
+/**
+ * Helper to get authenticated user ID from session
+ * Returns userId if authenticated, null otherwise
+ */
+export async function getAuthenticatedUserId(): Promise<string | null> {
+  const session = await auth();
+  if (!session?.user?.id) return null;
+  return session.user.id;
+}

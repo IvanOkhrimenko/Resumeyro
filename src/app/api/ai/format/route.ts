@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { generateText } from "ai";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { models } from "@/lib/ai/client";
+import { taskModels, models } from "@/lib/ai/client";
 import { FORMAT_ANALYSIS_PROMPT, fillPromptTemplate } from "@/lib/ai/prompts";
 import { PLANS } from "@/lib/constants";
 import { isAdminEmail } from "@/lib/settings";
+import { parseJSONFromLLM } from "@/lib/ai/json-parser";
 import type { FormattingResult } from "@/stores/ai-features-store";
 
 export async function POST(req: Request) {
@@ -90,22 +91,45 @@ export async function POST(req: Request) {
       preferences: preferencesStr,
     });
 
-    // Generate formatting analysis
+    // Generate formatting analysis using dedicated STYLE_FORMATTING model
+    // This model can have higher creativity/temperature settings
+    console.log("[AI Format] Starting formatting analysis...");
+
+    let modelConfig;
+    try {
+      modelConfig = await taskModels.styleFormatting();
+      console.log("[AI Format] Using STYLE_FORMATTING model:", modelConfig.modelId, "temp:", modelConfig.temperature);
+    } catch (e) {
+      // Fallback to analysis model if STYLE_FORMATTING not configured
+      console.log("[AI Format] STYLE_FORMATTING not configured, using fallback");
+      modelConfig = {
+        model: await models.analysis(),
+        temperature: 0.7, // Higher default for creativity
+        maxTokens: 3000,
+      };
+    }
+
     const { text } = await generateText({
-      model: await models.analysis(),
+      model: modelConfig.model,
       prompt,
-      maxOutputTokens: 2000,
-      temperature: 0.4,
+      maxOutputTokens: modelConfig.maxTokens || 3000,
+      temperature: modelConfig.temperature,
     });
 
-    // Parse the JSON response
+    console.log("[AI Format] Raw response length:", text.length);
+
+    // Parse the JSON response using robust parser
     let formatting: FormattingResult;
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
+      const parseResult = parseJSONFromLLM<FormattingResult>(text);
+
+      if (!parseResult.success || !parseResult.data) {
+        console.error("[AI Format] JSON parse failed:", parseResult.error);
+        throw new Error(parseResult.error || "Failed to parse formatting response");
       }
-      formatting = JSON.parse(jsonMatch[0]);
+
+      formatting = parseResult.data;
+      console.log("[AI Format] Parsed successfully, industry:", formatting.detectedIndustry);
 
       // Ensure required fields exist with defaults
       if (!formatting.styling) {

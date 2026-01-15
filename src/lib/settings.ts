@@ -17,6 +17,7 @@ export const AI_TASK_TYPES = {
   RESUME_GENERATION: "RESUME_GENERATION",
   TEXT_IMPROVEMENT: "TEXT_IMPROVEMENT",
   RESUME_REVIEW: "RESUME_REVIEW",
+  STYLE_FORMATTING: "STYLE_FORMATTING",
   IMAGE_GENERATION: "IMAGE_GENERATION",
   TRANSLATION: "TRANSLATION",
 } as const;
@@ -62,6 +63,11 @@ export const AI_TASK_METADATA: Record<AITaskType, { name: string; nameUk: string
     nameUk: "Ревью резюме",
     description: "Analyze and score resumes with feedback",
   },
+  STYLE_FORMATTING: {
+    name: "Style & Formatting",
+    nameUk: "Стилі та форматування",
+    description: "Creative style suggestions with higher creativity settings",
+  },
   IMAGE_GENERATION: {
     name: "Image Generation",
     nameUk: "Генерація зображень",
@@ -79,7 +85,8 @@ export const DEFAULT_TASK_CONFIGS: Record<AITaskType, { provider: string; modelI
   RESUME_PARSING: { provider: "anthropic", modelId: "claude-sonnet-4-20250514", temperature: 0.1, maxTokens: 4000 },
   RESUME_GENERATION: { provider: "anthropic", modelId: "claude-sonnet-4-20250514", temperature: 0.3, maxTokens: 4000 },
   TEXT_IMPROVEMENT: { provider: "anthropic", modelId: "claude-3-5-haiku-20241022", temperature: 0.7, maxTokens: 2000 },
-  RESUME_REVIEW: { provider: "anthropic", modelId: "claude-sonnet-4-20250514", temperature: 0.2, maxTokens: 3000 },
+  RESUME_REVIEW: { provider: "anthropic", modelId: "claude-sonnet-4-20250514", temperature: 0.2, maxTokens: 6000 },
+  STYLE_FORMATTING: { provider: "anthropic", modelId: "claude-sonnet-4-20250514", temperature: 0.8, maxTokens: 3000 }, // Higher creativity
   IMAGE_GENERATION: { provider: "openai", modelId: "dall-e-3", temperature: 1.0, maxTokens: 0 },
   TRANSLATION: { provider: "anthropic", modelId: "claude-3-5-haiku-20241022", temperature: 0.3, maxTokens: 4000 },
 };
