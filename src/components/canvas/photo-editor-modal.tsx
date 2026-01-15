@@ -15,6 +15,9 @@ import {
   Loader2,
   Sparkles,
   AlertCircle,
+  Square,
+  Circle,
+  RectangleHorizontal,
 } from "lucide-react";
 import { removeBackground } from "@imgly/background-removal";
 
@@ -26,6 +29,7 @@ interface PhotoEditorModalProps {
 }
 
 type TabType = "crop" | "background";
+type ShapeType = "square" | "rounded" | "circle";
 
 interface ImageState {
   x: number;
@@ -35,6 +39,7 @@ interface ImageState {
   flipH: boolean;
   flipV: boolean;
   background: string;
+  shape: ShapeType;
 }
 
 const PRESET_BACKGROUNDS = [
@@ -58,10 +63,14 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
     flipH: false,
     flipV: false,
     background: "transparent",
+    shape: "square",
   });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [customColor, setCustomColor] = useState("#ffffff");
+
+  // Use refs for drag to avoid re-renders during drag
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const currentPosRef = useRef({ x: 0, y: 0 });
 
   // Background removal state
   const [isRemovingBackground, setIsRemovingBackground] = useState(false);
@@ -85,6 +94,7 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
         flipH: false,
         flipV: false,
         background: "transparent",
+        shape: "square",
       });
       setActiveTab("crop");
       // Reset background removal state
@@ -137,49 +147,78 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
   // Get the current display image URL (original or background-removed)
   const displayImageUrl = backgroundRemovedUrl || imageUrl;
 
-  // Handle mouse/touch drag for repositioning
-  const handleDragStart = useCallback((clientX: number, clientY: number) => {
-    setIsDragging(true);
-    setDragStart({ x: clientX - imageState.x, y: clientY - imageState.y });
+  // Sync refs with state when state changes
+  useEffect(() => {
+    currentPosRef.current = { x: imageState.x, y: imageState.y };
   }, [imageState.x, imageState.y]);
 
-  const handleDragMove = useCallback((clientX: number, clientY: number) => {
-    if (!isDragging) return;
-    const maxOffset = 100 * imageState.zoom;
-    const newX = Math.max(-maxOffset, Math.min(maxOffset, clientX - dragStart.x));
-    const newY = Math.max(-maxOffset, Math.min(maxOffset, clientY - dragStart.y));
-    setImageState(prev => ({ ...prev, x: newX, y: newY }));
-  }, [isDragging, dragStart, imageState.zoom]);
+  // Update image transform directly (no state update)
+  const updateImageTransform = useCallback(() => {
+    if (!imageRef.current) return;
+    const { x, y } = currentPosRef.current;
+    imageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${imageState.zoom}) rotate(${imageState.rotation}deg) scaleX(${imageState.flipH ? -1 : 1}) scaleY(${imageState.flipV ? -1 : 1})`;
+  }, [imageState.zoom, imageState.rotation, imageState.flipH, imageState.flipV]);
 
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  // Mouse events
+  // Mouse events - direct DOM manipulation during drag
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    handleDragStart(e.clientX, e.clientY);
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      x: e.clientX - currentPosRef.current.x,
+      y: e.clientY - currentPosRef.current.y
+    };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    handleDragMove(e.clientX, e.clientY);
+    if (!isDraggingRef.current) return;
+    const maxOffset = 100 * imageState.zoom;
+    const newX = Math.max(-maxOffset, Math.min(maxOffset, e.clientX - dragStartRef.current.x));
+    const newY = Math.max(-maxOffset, Math.min(maxOffset, e.clientY - dragStartRef.current.y));
+    currentPosRef.current = { x: newX, y: newY };
+    updateImageTransform();
   };
 
-  const onMouseUp = () => handleDragEnd();
-  const onMouseLeave = () => handleDragEnd();
+  const onMouseUp = () => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      // Sync to state on drag end
+      setImageState(prev => ({ ...prev, x: currentPosRef.current.x, y: currentPosRef.current.y }));
+    }
+  };
+
+  const onMouseLeave = () => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      setImageState(prev => ({ ...prev, x: currentPosRef.current.x, y: currentPosRef.current.y }));
+    }
+  };
 
   // Touch events
   const onTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
-    handleDragStart(touch.clientX, touch.clientY);
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      x: touch.clientX - currentPosRef.current.x,
+      y: touch.clientY - currentPosRef.current.y
+    };
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingRef.current) return;
     const touch = e.touches[0];
-    handleDragMove(touch.clientX, touch.clientY);
+    const maxOffset = 100 * imageState.zoom;
+    const newX = Math.max(-maxOffset, Math.min(maxOffset, touch.clientX - dragStartRef.current.x));
+    const newY = Math.max(-maxOffset, Math.min(maxOffset, touch.clientY - dragStartRef.current.y));
+    currentPosRef.current = { x: newX, y: newY };
+    updateImageTransform();
   };
 
-  const onTouchEnd = () => handleDragEnd();
+  const onTouchEnd = () => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      setImageState(prev => ({ ...prev, x: currentPosRef.current.x, y: currentPosRef.current.y }));
+    }
+  };
 
   // Generate final image
   const generateImage = useCallback((): string => {
@@ -196,6 +235,20 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
 
     // Clear canvas first
     ctx.clearRect(0, 0, size, size);
+
+    // Apply shape clipping FIRST (before background and image)
+    ctx.save();
+    ctx.beginPath();
+    if (imageState.shape === "circle") {
+      ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    } else if (imageState.shape === "rounded") {
+      const radius = size * 0.08; // 8% corner radius
+      ctx.roundRect(0, 0, size, size, radius);
+    } else {
+      // Square - no clipping needed, full rectangle
+      ctx.rect(0, 0, size, size);
+    }
+    ctx.clip();
 
     // Draw background - always fill first
     if (imageState.background !== "transparent") {
@@ -253,6 +306,7 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
     );
 
     ctx.restore();
+    ctx.restore(); // Restore from clipping
 
     return canvas.toDataURL("image/png", 1.0);
   }, [displayImageUrl, imageState]);
@@ -283,6 +337,7 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
             flipH: false,
             flipV: false,
             background: imageState.background,
+            shape: imageState.shape,
           });
         }
       };
@@ -300,6 +355,7 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
       flipH: false,
       flipV: false,
       background: imageState.background,
+      shape: imageState.shape,
     });
   };
 
@@ -363,11 +419,12 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
                 {/* Image preview with crop frame */}
                 <div
                   ref={previewRef}
-                  className="relative w-64 h-64 mx-auto rounded-xl overflow-hidden cursor-move select-none"
+                  className="relative w-64 h-64 mx-auto overflow-hidden cursor-move select-none"
                   style={{
                     background: imageState.background === "transparent"
                       ? "repeating-conic-gradient(#27272a 0% 25%, #18181b 0% 50%) 50% / 16px 16px"
-                      : imageState.background
+                      : imageState.background,
+                    borderRadius: imageState.shape === "circle" ? "50%" : imageState.shape === "rounded" ? "8%" : "12px",
                   }}
                   onMouseDown={onMouseDown}
                   onMouseMove={onMouseMove}
@@ -389,7 +446,6 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
                         height: "100%",
                         objectFit: "contain",
                         transform: `translate(${imageState.x}px, ${imageState.y}px) scale(${imageState.zoom}) rotate(${imageState.rotation}deg) scaleX(${imageState.flipH ? -1 : 1}) scaleY(${imageState.flipV ? -1 : 1})`,
-                        transition: isDragging ? "none" : "transform 0.1s ease-out",
                       }}
                       draggable={false}
                     />
@@ -516,6 +572,48 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
                   Reset
                 </button>
               </div>
+
+              {/* Shape selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-500 font-medium">Shape</span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setImageState(prev => ({ ...prev, shape: "square" }))}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-colors ${
+                      imageState.shape === "square"
+                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                        : "text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-700"
+                    }`}
+                  >
+                    <Square className="w-4 h-4" />
+                    Square
+                  </button>
+                  <button
+                    onClick={() => setImageState(prev => ({ ...prev, shape: "rounded" }))}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-colors ${
+                      imageState.shape === "rounded"
+                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                        : "text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-700"
+                    }`}
+                  >
+                    <RectangleHorizontal className="w-4 h-4" />
+                    Rounded
+                  </button>
+                  <button
+                    onClick={() => setImageState(prev => ({ ...prev, shape: "circle" }))}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-colors ${
+                      imageState.shape === "circle"
+                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                        : "text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-700"
+                    }`}
+                  >
+                    <Circle className="w-4 h-4" />
+                    Circle
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -580,11 +678,12 @@ export function PhotoEditorModal({ isOpen, onClose, imageUrl, onSave }: PhotoEdi
 
               {/* Preview */}
               <div
-                className="relative w-48 h-48 mx-auto rounded-xl overflow-hidden"
+                className="relative w-48 h-48 mx-auto overflow-hidden"
                 style={{
                   background: imageState.background === "transparent"
                     ? "repeating-conic-gradient(#27272a 0% 25%, #18181b 0% 50%) 50% / 16px 16px"
-                    : imageState.background
+                    : imageState.background,
+                  borderRadius: imageState.shape === "circle" ? "50%" : imageState.shape === "rounded" ? "8%" : "12px",
                 }}
               >
                 <div className="absolute inset-0 flex items-center justify-center overflow-hidden">

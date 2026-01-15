@@ -82,6 +82,11 @@ export function TextPropertiesPanel() {
   const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
   const [photoEditorImageUrl, setPhotoEditorImageUrl] = useState("");
 
+  // Document-level state (must be before any early returns)
+  const [docFontFamily, setDocFontFamily] = useState("Arial, sans-serif");
+  const [docFontColor, setDocFontColor] = useState("#18181b");
+  const [docAccentColor, setDocAccentColor] = useState("#3b82f6");
+
   // Get selected text object
   const selectedTextObject = selectedObjects.find(
     (obj) => obj.type === "textbox" || obj.type === "i-text" || obj.type === "text"
@@ -409,17 +414,55 @@ export function TextPropertiesPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <p className="text-xs text-zinc-500">
-            Edit photo to crop, zoom, rotate, or change background
-          </p>
+          {/* Edit Photo */}
+          <div className="space-y-2">
+            <Label className="text-xs text-zinc-500">Edit Photo</Label>
+            <p className="text-xs text-zinc-400 mb-2">
+              Crop, zoom, rotate, change shape or background
+            </p>
+            <Button
+              onClick={handleEditPhoto}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Photo
+            </Button>
+          </div>
 
-          <Button
-            onClick={handleEditPhoto}
-            className="w-full gap-2"
-          >
-            <Pencil className="h-4 w-4" />
-            Edit Photo
-          </Button>
+          <Separator />
+
+          {/* Size */}
+          <div className="space-y-2">
+            <Label className="text-xs text-zinc-500">Size</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  selectedImageObject.scale(selectedImageObject.scaleX * 0.9);
+                  canvas?.renderAll();
+                  saveToHistory();
+                }}
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+              <span className="flex-1 text-center text-xs text-zinc-500">
+                {Math.round((selectedImageObject.scaleX || 1) * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  selectedImageObject.scale(selectedImageObject.scaleX * 1.1);
+                  canvas?.renderAll();
+                  saveToHistory();
+                }}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
         </div>
 
         <PhotoEditorModal
@@ -619,11 +662,6 @@ export function TextPropertiesPanel() {
       saveToHistory();
     }
   };
-
-  // Document-level state
-  const [docFontFamily, setDocFontFamily] = useState("Arial, sans-serif");
-  const [docFontColor, setDocFontColor] = useState("#18181b");
-  const [docAccentColor, setDocAccentColor] = useState("#3b82f6");
 
   // Apply global font to all text elements
   const applyGlobalFont = (fontFamily: string) => {
