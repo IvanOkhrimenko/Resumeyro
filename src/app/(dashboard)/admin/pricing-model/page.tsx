@@ -28,6 +28,12 @@ import {
   Settings2,
   Save,
   Check,
+  Layers,
+  Sparkles,
+  X,
+  Plus,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,8 +64,32 @@ interface PlanConfig {
   priceMonthly: number;
   aiGenerationsPerMonth: number;
   aiReviewsPerMonth: number;
+  multiModelReview: boolean;
+  isActive: boolean;
   taskModelOverrides: Record<string, { provider: string; modelId: string }>;
 }
+
+// Multi-model review configuration
+interface MultiModelConfig {
+  provider: string;
+  modelId: string;
+  name?: string;
+}
+
+interface MultiModelReviewConfig {
+  models: MultiModelConfig[];
+  synthesisProvider: string;
+  synthesisModelId: string;
+  isEnabled: boolean;
+  minModelsRequired: number;
+}
+
+// Token usage for multi-model review steps
+const MULTI_MODEL_TOKEN_USAGE = {
+  REVIEW_PROMPT: { input: 4000, output: 3000 }, // Each model reviews
+  SYNTHESIS_PROMPT: { input: 8000, output: 2000 }, // Combine all reviews
+  VERIFICATION_PROMPT: { input: 3000, output: 1500 }, // Verify suggestions
+};
 
 // Task types with metadata
 const TASK_TYPES = {
@@ -157,6 +187,7 @@ type TaskType = keyof typeof TASK_TYPES;
 export default function PricingModelPage() {
   // Data state
   const [plans, setPlans] = useState<PlanConfig[]>([]);
+  const [savedPlans, setSavedPlans] = useState<PlanConfig[]>([]);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPricing, setModelPricing] = useState<Record<string, ModelPricing & { name: string; provider: string }>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -186,6 +217,10 @@ export default function PricingModelPage() {
   const [unlimitedGenerations, setUnlimitedGenerations] = useState("50");
   const [unlimitedReviews, setUnlimitedReviews] = useState("20");
 
+  // Multi-model review configuration
+  const [multiModelConfig, setMultiModelConfig] = useState<MultiModelReviewConfig | null>(null);
+  const [savedMultiModelConfig, setSavedMultiModelConfig] = useState<MultiModelReviewConfig | null>(null);
+
   // ============================================================================
   // DATA FETCHING
   // ============================================================================
@@ -197,11 +232,12 @@ export default function PricingModelPage() {
   async function fetchData(refreshModels = false) {
     setIsLoading(true);
     try {
-      // Fetch plans, models, and pricing from APIs
-      const [plansRes, modelsRes, pricingRes] = await Promise.all([
+      // Fetch plans, models, pricing, and multi-model config from APIs
+      const [plansRes, modelsRes, pricingRes, multiModelRes] = await Promise.all([
         fetch("/api/admin/plans"),
         fetch("/api/admin/ai-models"), // Use same API as AI Tasks page
         fetch("/api/admin/pricing"), // Fetch real-time pricing from LiteLLM
+        fetch("/api/admin/multi-model-config"), // Multi-model review config
       ]);
 
       if (!plansRes.ok) throw new Error("Failed to fetch plans");
@@ -213,9 +249,20 @@ export default function PricingModelPage() {
         priceMonthly: p.priceMonthly,
         aiGenerationsPerMonth: p.aiGenerationsPerMonth,
         aiReviewsPerMonth: p.aiReviewsPerMonth,
+        multiModelReview: p.multiModelReview || false,
+        isActive: p.isActive ?? true,
         taskModelOverrides: p.taskModelOverrides || {},
       }));
       setPlans(fetchedPlans);
+      setSavedPlans(JSON.parse(JSON.stringify(fetchedPlans))); // Deep copy for comparison
+
+      // Fetch multi-model review configuration
+      if (multiModelRes.ok) {
+        const mmConfig = await multiModelRes.json();
+        setMultiModelConfig(mmConfig);
+        setSavedMultiModelConfig(JSON.parse(JSON.stringify(mmConfig))); // Deep copy for comparison
+        console.log(`[pricing-model] Multi-model config: ${mmConfig.models?.length || 0} review models, synthesis: ${mmConfig.synthesisModelId}`);
+      }
 
       // Initialize user counts
       const counts: Record<string, number> = {};
@@ -368,6 +415,41 @@ export default function PricingModelPage() {
     [modelPricing]
   );
 
+  // Calculate cost for multi-model review (all review models + synthesis + verification)
+  const calculateMultiModelReviewCost = useCallback((): number => {
+    if (!multiModelConfig || !multiModelConfig.isEnabled || multiModelConfig.models.length === 0) {
+      return 0;
+    }
+
+    let totalCost = 0;
+
+    // Cost for each review model
+    for (const reviewModel of multiModelConfig.models) {
+      const pricing = modelPricing[reviewModel.modelId];
+      if (pricing) {
+        const inputCost = (MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.input / 1_000_000) * pricing.inputPer1M;
+        const outputCost = (MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.output / 1_000_000) * pricing.outputPer1M;
+        totalCost += inputCost + outputCost;
+      }
+    }
+
+    // Cost for synthesis model
+    const synthesisPricing = modelPricing[multiModelConfig.synthesisModelId];
+    if (synthesisPricing) {
+      // Synthesis prompt
+      const synthInputCost = (MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.input / 1_000_000) * synthesisPricing.inputPer1M;
+      const synthOutputCost = (MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.output / 1_000_000) * synthesisPricing.outputPer1M;
+      totalCost += synthInputCost + synthOutputCost;
+
+      // Verification prompt (also uses synthesis model)
+      const verifyInputCost = (MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.input / 1_000_000) * synthesisPricing.inputPer1M;
+      const verifyOutputCost = (MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.output / 1_000_000) * synthesisPricing.outputPer1M;
+      totalCost += verifyInputCost + verifyOutputCost;
+    }
+
+    return totalCost;
+  }, [multiModelConfig, modelPricing]);
+
   // Calculate costs for a plan in a quarter
   const calculatePlanQuarter = useCallback(
     (plan: PlanConfig, quarterIdx: number) => {
@@ -394,11 +476,18 @@ export default function PricingModelPage() {
       monthlyCostPerUser += avgGen * calculateTaskCost("RESUME_PARSING", modelMatrix[plan.key].RESUME_PARSING);
       monthlyCostPerUser += avgGen * calculateTaskCost("RESUME_GENERATION", modelMatrix[plan.key].RESUME_GENERATION);
 
-      // Reviews
+      // Reviews - check if multi-model review is enabled for this plan
       const unlimitedRevNum = parseInt(unlimitedReviews, 10) || 0;
       const reviewLimit = aiReviews === -1 ? unlimitedRevNum : aiReviews;
       const avgReviews = reviewLimit * usageFactor;
-      monthlyCostPerUser += avgReviews * calculateTaskCost("RESUME_REVIEW", modelMatrix[plan.key].RESUME_REVIEW);
+
+      if (plan.multiModelReview && multiModelConfig?.isEnabled) {
+        // Use multi-model review cost (all models + synthesis + verification)
+        monthlyCostPerUser += avgReviews * calculateMultiModelReviewCost();
+      } else {
+        // Use single-model review cost
+        monthlyCostPerUser += avgReviews * calculateTaskCost("RESUME_REVIEW", modelMatrix[plan.key].RESUME_REVIEW);
+      }
 
       // Text improvements (estimate 10 per user per month)
       monthlyCostPerUser += 10 * usageFactor * calculateTaskCost("TEXT_IMPROVEMENT", modelMatrix[plan.key].TEXT_IMPROVEMENT);
@@ -416,10 +505,13 @@ export default function PricingModelPage() {
         profit: quarterRevenue - quarterCost,
       };
     },
-    [userCounts, growthRate, usageIntensity, unlimitedGenerations, unlimitedReviews, modelMatrix, planEdits, calculateTaskCost]
+    [userCounts, growthRate, usageIntensity, unlimitedGenerations, unlimitedReviews, modelMatrix, planEdits, calculateTaskCost, calculateMultiModelReviewCost, multiModelConfig]
   );
 
-  // Quarterly data for charts
+  // Filter only active plans for analytics
+  const activePlans = useMemo(() => plans.filter(p => p.isActive), [plans]);
+
+  // Quarterly data for charts (only active plans)
   const quarterlyData = useMemo(() => {
     const quarters = ["Q1", "Q2", "Q3", "Q4"];
     return quarters.map((quarter, idx) => {
@@ -427,7 +519,7 @@ export default function PricingModelPage() {
       let totalCost = 0;
       let totalUsers = 0;
 
-      plans.forEach((plan) => {
+      activePlans.forEach((plan) => {
         const result = calculatePlanQuarter(plan, idx);
         totalRevenue += result.revenue || 0;
         totalCost += result.cost || 0;
@@ -442,11 +534,11 @@ export default function PricingModelPage() {
         users: totalUsers,
       };
     });
-  }, [plans, calculatePlanQuarter]);
+  }, [activePlans, calculatePlanQuarter]);
 
-  // Per-plan breakdown
+  // Per-plan breakdown (only active plans)
   const planBreakdown = useMemo(() => {
-    return plans.map((plan) => {
+    return activePlans.map((plan) => {
       const q4 = calculatePlanQuarter(plan, 3);
       return {
         plan,
@@ -455,7 +547,7 @@ export default function PricingModelPage() {
         costPerUser: q4.users > 0 ? q4.cost / q4.users / 3 : 0, // monthly cost per user
       };
     });
-  }, [plans, calculatePlanQuarter]);
+  }, [activePlans, calculatePlanQuarter]);
 
   // Totals
   const totals = useMemo(() => {
@@ -492,19 +584,65 @@ export default function PricingModelPage() {
   const applyModelToAllPlans = (taskType: TaskType, modelId: string) => {
     setModelMatrix((prev) => {
       const updated = { ...prev };
-      Object.keys(updated).forEach((planKey) => {
-        updated[planKey] = { ...updated[planKey], [taskType]: modelId };
+      // Only apply to active plans
+      activePlans.forEach((plan) => {
+        updated[plan.key] = { ...updated[plan.key], [taskType]: modelId };
       });
       return updated;
     });
+  };
+
+  // Multi-model config handlers
+  const toggleMultiModelEnabled = () => {
+    if (!multiModelConfig) return;
+    setMultiModelConfig({
+      ...multiModelConfig,
+      isEnabled: !multiModelConfig.isEnabled,
+    });
+  };
+
+  const addReviewModel = (provider: string, modelId: string, name?: string) => {
+    if (!multiModelConfig) return;
+    // Don't add duplicates
+    if (multiModelConfig.models.some(m => m.modelId === modelId)) return;
+    setMultiModelConfig({
+      ...multiModelConfig,
+      models: [...multiModelConfig.models, { provider, modelId, name }],
+    });
+  };
+
+  const removeReviewModel = (modelId: string) => {
+    if (!multiModelConfig) return;
+    setMultiModelConfig({
+      ...multiModelConfig,
+      models: multiModelConfig.models.filter(m => m.modelId !== modelId),
+    });
+  };
+
+  const setSynthesisModel = (provider: string, modelId: string) => {
+    if (!multiModelConfig) return;
+    setMultiModelConfig({
+      ...multiModelConfig,
+      synthesisProvider: provider,
+      synthesisModelId: modelId,
+    });
+  };
+
+  const togglePlanMultiModel = (planKey: string) => {
+    setPlans(prev => prev.map(p =>
+      p.key === planKey ? { ...p, multiModelReview: !p.multiModelReview } : p
+    ));
   };
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
     const modelMatrixChanged = JSON.stringify(modelMatrix) !== JSON.stringify(savedModelMatrix);
     const planEditsChanged = JSON.stringify(planEdits) !== JSON.stringify(savedPlanEdits);
-    return modelMatrixChanged || planEditsChanged;
-  }, [modelMatrix, savedModelMatrix, planEdits, savedPlanEdits]);
+    const multiModelChanged = JSON.stringify(multiModelConfig) !== JSON.stringify(savedMultiModelConfig);
+    const plansChanged = JSON.stringify(plans.map(p => ({ key: p.key, multiModelReview: p.multiModelReview }))) !==
+                         JSON.stringify(savedPlans.map(p => ({ key: p.key, multiModelReview: p.multiModelReview })));
+    return modelMatrixChanged || planEditsChanged || multiModelChanged || plansChanged;
+  }, [modelMatrix, savedModelMatrix, planEdits, savedPlanEdits, multiModelConfig, savedMultiModelConfig, plans, savedPlans]);
 
   // Save all configurations to plans
   const saveModelConfigurations = async () => {
@@ -533,6 +671,7 @@ export default function PricingModelPage() {
         const updateData: Record<string, unknown> = {
           key: plan.key,
           taskModelOverrides: taskOverrides,
+          multiModelReview: plan.multiModelReview,
         };
 
         // Add price and limits if edited
@@ -558,6 +697,18 @@ export default function PricingModelPage() {
       });
 
       await Promise.all(savePromises);
+
+      // Save multi-model config if changed
+      if (multiModelConfig && JSON.stringify(multiModelConfig) !== JSON.stringify(savedMultiModelConfig)) {
+        const mmRes = await fetch("/api/admin/multi-model-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(multiModelConfig),
+        });
+        if (!mmRes.ok) {
+          throw new Error("Failed to save multi-model configuration");
+        }
+      }
 
       // Refetch data from DB to ensure consistency
       await fetchData();
@@ -735,7 +886,7 @@ export default function PricingModelPage() {
         <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
           <Label className="text-sm text-zinc-600 dark:text-zinc-400">Starting Users (Q1)</Label>
           <div className="flex gap-2 mt-2">
-            {plans.map((plan) => (
+            {activePlans.map((plan) => (
               <div key={plan.key} className="flex-1">
                 <Label className="text-xs text-zinc-400">{plan.name}</Label>
                 <Input
@@ -776,7 +927,7 @@ export default function PricingModelPage() {
               </tr>
             </thead>
             <tbody>
-              {plans.map((plan) => (
+              {activePlans.map((plan) => (
                 <tr key={plan.key} className="border-b border-zinc-100 dark:border-zinc-800">
                   <td className="py-3 px-2 font-medium text-zinc-900 dark:text-white">{plan.name}</td>
                   <td className="py-3 px-2">
@@ -843,7 +994,7 @@ export default function PricingModelPage() {
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-700">
                 <th className="py-3 px-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Task Type</th>
-                {plans.map((plan) => (
+                {activePlans.map((plan) => (
                   <th key={plan.key} className="py-3 px-2 text-left font-medium text-zinc-500 dark:text-zinc-400">
                     {plan.name}
                   </th>
@@ -860,7 +1011,7 @@ export default function PricingModelPage() {
                       ~{TASK_TYPES[taskType].avgInput + TASK_TYPES[taskType].avgOutput} tokens
                     </p>
                   </td>
-                  {plans.map((plan) => (
+                  {activePlans.map((plan) => (
                     <td key={plan.key} className="py-3 px-2">
                       <select
                         value={modelMatrix[plan.key]?.[taskType] || ""}
@@ -939,6 +1090,257 @@ export default function PricingModelPage() {
           </table>
         </div>
       </div>
+
+      {/* Multi-Model Review Configuration */}
+      {multiModelConfig && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <h3 className="font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                <Layers className="h-4 w-4 text-indigo-600" />
+                Multi-Model Review
+              </h3>
+              {/* Enable/Disable Toggle */}
+              <button
+                onClick={toggleMultiModelEnabled}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  multiModelConfig.isEnabled
+                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
+                    : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                )}
+              >
+                {multiModelConfig.isEnabled ? (
+                  <>
+                    <ToggleRight className="h-3.5 w-3.5" /> Enabled
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="h-3.5 w-3.5" /> Disabled
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">Cost per review</p>
+              <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                ${calculateMultiModelReviewCost().toFixed(4)}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Review Models */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  Review Models ({multiModelConfig.models.length})
+                </p>
+                {/* Add Review Model Dropdown */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [provider, modelId] = e.target.value.split("||");
+                      const model = availableModels.find(m => m.id === modelId);
+                      addReviewModel(provider, modelId, model?.name);
+                      e.target.value = "";
+                    }
+                  }}
+                  className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200"
+                  defaultValue=""
+                >
+                  <option value="" disabled>+ Add model...</option>
+                  {["anthropic", "openai", "google"].map((provider) => {
+                    const providerModels = availableModels.filter(
+                      (m) => m.provider === provider && !multiModelConfig.models.some(rm => rm.modelId === m.id)
+                    );
+                    if (providerModels.length === 0) return null;
+                    return (
+                      <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+                        {providerModels.map((model) => {
+                          const pricing = modelPricing[model.id];
+                          const reviewCost = pricing
+                            ? ((MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.input / 1_000_000) * pricing.inputPer1M) +
+                              ((MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.output / 1_000_000) * pricing.outputPer1M)
+                            : 0;
+                          const tierLabel = model.tier === "fast" ? "⚡" : model.tier === "premium" ? "👑" : model.tier === "reasoning" ? "🧠" : "✨";
+                          return (
+                            <option key={model.id} value={`${provider}||${model.id}`}>
+                              {tierLabel} {model.name} (${reviewCost.toFixed(4)}/review)
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+              </div>
+              {multiModelConfig.models.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {multiModelConfig.models.map((model, idx) => {
+                    const pricing = modelPricing[model.modelId];
+                    const modelInfo = availableModels.find(m => m.id === model.modelId);
+                    const inputCost = pricing ? (MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.input / 1_000_000) * pricing.inputPer1M : 0;
+                    const outputCost = pricing ? (MULTI_MODEL_TOKEN_USAGE.REVIEW_PROMPT.output / 1_000_000) * pricing.outputPer1M : 0;
+                    const totalCost = inputCost + outputCost;
+                    const tierLabel = modelInfo?.tier === "fast" ? "⚡" : modelInfo?.tier === "premium" ? "👑" : modelInfo?.tier === "reasoning" ? "🧠" : "✨";
+
+                    return (
+                      <div
+                        key={`${model.provider}-${model.modelId}-${idx}`}
+                        className="group rounded-lg border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2 min-w-0 flex-1">
+                            <span className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-bold text-white shrink-0">
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm">{tierLabel}</span>
+                                <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
+                                  {model.name || model.modelId}
+                                </p>
+                              </div>
+                              <p className="text-[10px] text-zinc-400 capitalize">{model.provider}</p>
+                              {modelInfo?.bestFor && (
+                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-tight">
+                                  {modelInfo.bestFor}
+                                </p>
+                              )}
+                              {modelInfo?.strengths && modelInfo.strengths.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {modelInfo.strengths.map((s, i) => (
+                                    <span key={i} className="inline-block rounded bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 text-[9px] text-zinc-600 dark:text-zinc-300">
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <p className="text-xs font-mono font-medium text-amber-600 dark:text-amber-400">
+                              ${totalCost.toFixed(4)}
+                            </p>
+                            <button
+                              onClick={() => removeReviewModel(model.modelId)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-opacity"
+                              title="Remove model"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 p-4 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+                  <p className="text-xs text-zinc-400">No review models added. Add models above.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Synthesis Model */}
+            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Synthesis Model</p>
+                {(() => {
+                  const synthPricing = modelPricing[multiModelConfig.synthesisModelId];
+                  const synthInputCost = synthPricing ? (MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.input / 1_000_000) * synthPricing.inputPer1M : 0;
+                  const synthOutputCost = synthPricing ? (MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.output / 1_000_000) * synthPricing.outputPer1M : 0;
+                  const verifyInputCost = synthPricing ? (MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.input / 1_000_000) * synthPricing.inputPer1M : 0;
+                  const verifyOutputCost = synthPricing ? (MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.output / 1_000_000) * synthPricing.outputPer1M : 0;
+                  const totalSynthCost = synthInputCost + synthOutputCost + verifyInputCost + verifyOutputCost;
+                  return (
+                    <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400">
+                      ${totalSynthCost.toFixed(4)} (synth + verify)
+                    </span>
+                  );
+                })()}
+              </div>
+              <select
+                value={multiModelConfig.synthesisModelId}
+                onChange={(e) => {
+                  const model = availableModels.find(m => m.id === e.target.value);
+                  if (model) {
+                    setSynthesisModel(model.provider, model.id);
+                  }
+                }}
+                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                {["anthropic", "openai", "google"].map((provider) => {
+                  const providerModels = availableModels.filter((m) => m.provider === provider);
+                  if (providerModels.length === 0) return null;
+                  return (
+                    <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+                      {providerModels.map((model) => {
+                        const pricing = modelPricing[model.id];
+                        const synthCost = pricing
+                          ? ((MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.input / 1_000_000) * pricing.inputPer1M) +
+                            ((MULTI_MODEL_TOKEN_USAGE.SYNTHESIS_PROMPT.output / 1_000_000) * pricing.outputPer1M) +
+                            ((MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.input / 1_000_000) * pricing.inputPer1M) +
+                            ((MULTI_MODEL_TOKEN_USAGE.VERIFICATION_PROMPT.output / 1_000_000) * pricing.outputPer1M)
+                          : 0;
+                        const tierLabel = model.tier === "fast" ? "⚡" : model.tier === "premium" ? "👑" : model.tier === "reasoning" ? "🧠" : "✨";
+                        return (
+                          <option key={model.id} value={model.id}>
+                            {tierLabel} {model.name} (${synthCost.toFixed(4)})
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  );
+                })}
+              </select>
+              {/* Selected synthesis model info */}
+              {(() => {
+                const synthModel = availableModels.find(m => m.id === multiModelConfig.synthesisModelId);
+                if (!synthModel?.bestFor) return null;
+                return (
+                  <div className="mt-2 p-2 rounded bg-indigo-50 dark:bg-indigo-900/20">
+                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400">{synthModel.bestFor}</p>
+                    {synthModel.strengths && synthModel.strengths.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {synthModel.strengths.map((s, i) => (
+                          <span key={i} className="inline-block rounded bg-indigo-100 dark:bg-indigo-800/50 px-1.5 py-0.5 text-[9px] text-indigo-700 dark:text-indigo-300">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Plans with multi-model enabled */}
+            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Enable Multi-Model Review per Plan</p>
+              <div className="flex flex-wrap gap-2">
+                {activePlans.map(plan => (
+                  <button
+                    key={plan.key}
+                    onClick={() => togglePlanMultiModel(plan.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                      plan.multiModelReview
+                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+                    )}
+                  >
+                    {plan.multiModelReview ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                    {plan.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
