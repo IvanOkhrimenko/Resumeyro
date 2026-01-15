@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Key, Shield, AlertTriangle, CheckCircle, XCircle, Save, Eye, EyeOff, Bot, Zap, PlayCircle } from "lucide-react";
+import { Loader2, Key, Shield, AlertTriangle, CheckCircle, XCircle, Save, Eye, EyeOff, Bot, Zap, PlayCircle, ExternalLink, ChevronDown, ChevronUp, Info, CreditCard, Users } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 interface Setting {
@@ -110,6 +110,89 @@ const SETTING_LABELS: Record<string, { label: string; description: string; categ
   },
 };
 
+// Setup guides for each category
+const SETUP_GUIDES: Record<string, {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  steps: Array<{
+    title: string;
+    description: string;
+    link?: { url: string; label: string };
+    tip?: string;
+  }>;
+}> = {
+  AI: {
+    title: "AI Provider Setup",
+    icon: Bot,
+    steps: [
+      {
+        title: "OpenAI (GPT-4o)",
+        description: "1. Зайдіть на platform.openai.com\n2. Settings → API Keys → Create new secret key\n3. Скопіюйте ключ (починається з sk-...)",
+        link: { url: "https://platform.openai.com/api-keys", label: "OpenAI API Keys" },
+        tip: "Рекомендовано: встановіть ліміт витрат в Settings → Limits",
+      },
+      {
+        title: "Anthropic (Claude)",
+        description: "1. Зайдіть на console.anthropic.com\n2. Settings → API Keys → Create Key\n3. Скопіюйте ключ (починається з sk-ant-...)",
+        link: { url: "https://console.anthropic.com/settings/keys", label: "Anthropic API Keys" },
+        tip: "Claude Sonnet - найкращий баланс ціни та якості для резюме",
+      },
+      {
+        title: "Google AI (Gemini)",
+        description: "1. Зайдіть на aistudio.google.com\n2. Get API Key → Create API key\n3. Виберіть проект або створіть новий\n4. Скопіюйте ключ (починається з AIza...)",
+        link: { url: "https://aistudio.google.com/app/apikey", label: "Google AI Studio" },
+        tip: "Gemini Flash - найшвидший та найдешевший варіант",
+      },
+    ],
+  },
+  Stripe: {
+    title: "Stripe Payment Setup",
+    icon: CreditCard,
+    steps: [
+      {
+        title: "1. Отримати API ключі",
+        description: "Dashboard → Developers → API keys\n• Publishable key (pk_live_...) - для клієнтської частини\n• Secret key (sk_live_...) - для серверної частини",
+        link: { url: "https://dashboard.stripe.com/apikeys", label: "Stripe API Keys" },
+        tip: "Для тестування використовуйте Test mode ключі (pk_test_..., sk_test_...)",
+      },
+      {
+        title: "2. Налаштувати Webhook",
+        description: "Dashboard → Developers → Webhooks → Add endpoint\n• URL: https://your-domain.com/api/stripe/webhook\n• Events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted, invoice.payment_succeeded, invoice.payment_failed",
+        link: { url: "https://dashboard.stripe.com/webhooks", label: "Stripe Webhooks" },
+        tip: "Скопіюйте Signing secret (whsec_...) після створення webhook",
+      },
+      {
+        title: "3. Створити Products та Prices",
+        description: "Dashboard → Products → Add product\n• Створіть Pro та Premium плани\n• Тип: Recurring (щомісячна підписка)\n• Скопіюйте Price ID (price_...) для кожного плану",
+        link: { url: "https://dashboard.stripe.com/products", label: "Stripe Products" },
+        tip: "Можна додати trial period для нових користувачів",
+      },
+    ],
+  },
+  OAuth: {
+    title: "Google OAuth Setup",
+    icon: Users,
+    steps: [
+      {
+        title: "1. Створити проект в Google Cloud",
+        description: "1. Зайдіть на console.cloud.google.com\n2. Виберіть або створіть проект\n3. APIs & Services → OAuth consent screen\n4. Налаштуйте consent screen (User Type: External)",
+        link: { url: "https://console.cloud.google.com/apis/credentials", label: "Google Cloud Console" },
+      },
+      {
+        title: "2. Створити OAuth credentials",
+        description: "APIs & Services → Credentials → Create Credentials → OAuth client ID\n• Application type: Web application\n• Authorized redirect URIs:\n  - https://your-domain.com/api/auth/callback/google\n  - http://localhost:3000/api/auth/callback/google (для dev)",
+        link: { url: "https://console.cloud.google.com/apis/credentials/oauthclient", label: "Create OAuth Client" },
+        tip: "Скопіюйте Client ID та Client Secret",
+      },
+      {
+        title: "3. Увімкнути необхідні API",
+        description: "APIs & Services → Library\n• Увімкніть: Google+ API (для базового профілю)",
+        link: { url: "https://console.cloud.google.com/apis/library", label: "API Library" },
+      },
+    ],
+  },
+};
+
 // Custom SVG icons for each provider
 function OpenAIIcon({ className }: { className?: string }) {
   return (
@@ -189,7 +272,12 @@ export default function AdminSettingsPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string } | null>>({});
+  const [expandedGuides, setExpandedGuides] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+
+  const toggleGuide = (category: string) => {
+    setExpandedGuides(prev => ({ ...prev, [category]: !prev[category] }));
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -547,14 +635,62 @@ export default function AdminSettingsPage() {
       {categories["AI"] && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              AI API Keys
-            </CardTitle>
-            <CardDescription>
-              Configure API keys for AI providers
-            </CardDescription>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  AI API Keys
+                </CardTitle>
+                <CardDescription>
+                  Configure API keys for AI providers
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => toggleGuide("AI")}
+                className="flex items-center gap-1.5"
+              >
+                <Info className="h-4 w-4" />
+                Як отримати ключі
+                {expandedGuides["AI"] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
           </CardHeader>
+
+          {/* Setup Guide */}
+          {expandedGuides["AI"] && SETUP_GUIDES["AI"] && (
+            <div className="mx-6 mb-4 rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
+              <h4 className="mb-3 font-semibold text-blue-900 dark:text-blue-100">{SETUP_GUIDES["AI"].title}</h4>
+              <div className="space-y-4">
+                {SETUP_GUIDES["AI"].steps.map((step, idx) => (
+                  <div key={idx} className="rounded-lg bg-white/60 p-3 dark:bg-zinc-900/40">
+                    <div className="flex items-start justify-between gap-2">
+                      <h5 className="font-medium text-zinc-900 dark:text-zinc-100">{step.title}</h5>
+                      {step.link && (
+                        <a
+                          href={step.link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/50 dark:text-blue-300 dark:hover:bg-blue-900"
+                        >
+                          {step.link.label}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                    <p className="mt-1.5 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">{step.description}</p>
+                    {step.tip && (
+                      <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                        <span className="mt-0.5">💡</span> {step.tip}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <CardContent>
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {categories["AI"].map((setting) => {
@@ -697,17 +833,78 @@ export default function AdminSettingsPage() {
       {/* Other Settings (Stripe, OAuth) */}
       {Object.entries(categories)
         .filter(([category]) => category !== "AI")
-        .map(([category, categorySettings]) => (
+        .map(([category, categorySettings]) => {
+          const guide = SETUP_GUIDES[category];
+          const GuideIcon = guide?.icon || Key;
+          const colorClasses = category === "Stripe"
+            ? "border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 dark:border-violet-800 dark:from-violet-950/30 dark:to-purple-950/30"
+            : "border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-800 dark:from-emerald-950/30 dark:to-teal-950/30";
+          const titleColor = category === "Stripe" ? "text-violet-900 dark:text-violet-100" : "text-emerald-900 dark:text-emerald-100";
+          const linkColor = category === "Stripe"
+            ? "bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/50 dark:text-violet-300 dark:hover:bg-violet-900"
+            : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-900";
+
+          return (
           <Card key={category}>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                {category} Settings
-              </CardTitle>
-              <CardDescription>
-                {category} integration configuration
-              </CardDescription>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <GuideIcon className="h-5 w-5" />
+                    {category} Settings
+                  </CardTitle>
+                  <CardDescription>
+                    {category} integration configuration
+                  </CardDescription>
+                </div>
+                {guide && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleGuide(category)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Info className="h-4 w-4" />
+                    Інструкція
+                    {expandedGuides[category] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
+
+            {/* Setup Guide */}
+            {expandedGuides[category] && guide && (
+              <div className={`mx-6 mb-4 rounded-lg border p-4 ${colorClasses}`}>
+                <h4 className={`mb-3 font-semibold ${titleColor}`}>{guide.title}</h4>
+                <div className="space-y-4">
+                  {guide.steps.map((step, idx) => (
+                    <div key={idx} className="rounded-lg bg-white/60 p-3 dark:bg-zinc-900/40">
+                      <div className="flex items-start justify-between gap-2">
+                        <h5 className="font-medium text-zinc-900 dark:text-zinc-100">{step.title}</h5>
+                        {step.link && (
+                          <a
+                            href={step.link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${linkColor}`}
+                          >
+                            {step.link.label}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      <p className="mt-1.5 whitespace-pre-line text-sm text-zinc-600 dark:text-zinc-400">{step.description}</p>
+                      {step.tip && (
+                        <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                          <span className="mt-0.5">💡</span> {step.tip}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <CardContent>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                 {categorySettings.map((setting) => {
@@ -802,7 +999,8 @@ export default function AdminSettingsPage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
     </div>
   );
 }
