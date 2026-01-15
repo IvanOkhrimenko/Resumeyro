@@ -20,7 +20,7 @@ export function Providers({ children, locale, messages }: ProvidersProps) {
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <NextIntlClientProvider locale={locale} messages={messages} timeZone="UTC">
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
             <ToastProvider>
               <ModalProvider>{children}</ModalProvider>

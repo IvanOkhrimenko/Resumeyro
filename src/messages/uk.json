@@ -104,8 +104,14 @@
     "importPdf": "Імпорт PDF",
     "parseWithAi": "Розпізнати існуюче резюме з AI",
     "availableOnFreePlan": "доступно на безкоштовному плані",
+    "availableOnPlan": "доступно на вашому плані",
+    "unlimited": "Безлімітно",
     "usedThisMonth": "Використано цього місяця",
-    "completeResumeToSee": "Завершіть резюме щоб побачити"
+    "completeResumeToSee": "Завершіть резюме щоб побачити",
+    "latestReview": "Останній AI огляд",
+    "pro": "Pro",
+    "premium": "Premium",
+    "managePlan": "Керувати планом"
   },
   "resumes": {
     "title": "Мої резюме",

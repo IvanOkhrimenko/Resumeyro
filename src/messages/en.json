@@ -104,8 +104,14 @@
     "importPdf": "Import PDF",
     "parseWithAi": "Parse existing resume with AI",
     "availableOnFreePlan": "available on free plan",
+    "availableOnPlan": "available on your plan",
+    "unlimited": "Unlimited",
     "usedThisMonth": "Used this month",
-    "completeResumeToSee": "Complete a resume to see"
+    "completeResumeToSee": "Complete a resume to see",
+    "latestReview": "Latest AI review",
+    "pro": "Pro",
+    "premium": "Premium",
+    "managePlan": "Manage plan"
   },
   "resumes": {
     "title": "My Resumes",

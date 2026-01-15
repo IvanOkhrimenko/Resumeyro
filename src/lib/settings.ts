@@ -1,12 +1,6 @@
 import { db } from "./db";
 import type { AITaskType } from "@prisma/client";
 
-// Admin emails from environment variable (comma-separated)
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-
 // AI Provider options
 export const AI_PROVIDERS = {
   OPENAI: "openai",
@@ -190,9 +184,29 @@ export async function deleteSetting(key: SettingKey): Promise<void> {
   });
 }
 
-// Check if email is admin
+// Check if user is admin by their ID (checks role in database)
+export async function isAdmin(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === "ADMIN";
+  } catch {
+    return false;
+  }
+}
+
+// @deprecated Use isAdmin(userId) instead
 export function isAdminEmail(email: string | null | undefined): boolean {
+  console.warn("isAdminEmail is deprecated, use isAdmin(userId) instead");
   if (!email) return false;
+  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
   return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 

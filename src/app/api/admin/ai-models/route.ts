@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { isAdminEmail, getSetting, SETTING_KEYS } from "@/lib/settings";
+import { isAdmin, getSetting, SETTING_KEYS } from "@/lib/settings";
 
 interface ModelInfo {
   id: string;
@@ -212,11 +212,11 @@ export async function GET(req: Request) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isAdminEmail(session.user.email)) {
+    if (!(await isAdmin(session.user.id))) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
 

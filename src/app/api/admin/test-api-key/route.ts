@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getSetting, SETTING_KEYS } from "@/lib/settings";
-
-// Check if user is admin
-async function isAdmin(email: string | null | undefined): Promise<boolean> {
-  if (!email) return false;
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase());
-  return adminEmails.includes(email.toLowerCase());
-}
+import { getSetting, SETTING_KEYS, isAdmin, type SettingKey } from "@/lib/settings";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email || !(await isAdmin(session.user.email))) {
+    if (!session?.user?.id || !(await isAdmin(session.user.id))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -26,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get API key for the provider
-    const keyMap: Record<string, string> = {
+    const keyMap: Record<string, SettingKey> = {
       openai: SETTING_KEYS.OPENAI_API_KEY,
       anthropic: SETTING_KEYS.ANTHROPIC_API_KEY,
       google: SETTING_KEYS.GOOGLE_AI_API_KEY,

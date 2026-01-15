@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { isAdminEmail, getAllSettings, saveSetting, SETTING_KEYS, SettingKey } from "@/lib/settings";
+import { isAdmin, getAllSettings, saveSetting, SETTING_KEYS, SettingKey } from "@/lib/settings";
 
 // GET /api/admin/settings - Get all settings (read from database/environment)
 export async function GET() {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isAdminEmail(session.user.email)) {
+    if (!(await isAdmin(session.user.id))) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
 
@@ -31,11 +31,11 @@ export async function POST(req: Request) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!isAdminEmail(session.user.email)) {
+    if (!(await isAdmin(session.user.id))) {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
     }
 

@@ -1,11 +1,12 @@
 import { jsPDF } from "jspdf";
+import "svg2pdf.js";
 import type { Canvas } from "fabric";
 
 // A4 dimensions in mm
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 
-// Canvas dimensions (96 DPI)
+// Canvas dimensions
 const CANVAS_WIDTH = 595;
 const CANVAS_HEIGHT = 842;
 
@@ -16,21 +17,17 @@ export interface ExportOptions {
   addWatermark?: boolean;
 }
 
-// Calculate actual content height (excluding page break lines and non-interactive objects)
-// This should match the logic in resume-canvas.tsx updateCanvasSize
+// Calculate actual content height (excluding page break lines)
 function getActualContentHeight(canvas: Canvas): number {
-  let maxBottom = CANVAS_HEIGHT; // Start with one page minimum (same as canvas)
+  let maxBottom = CANVAS_HEIGHT;
 
   canvas.getObjects().forEach((obj: any) => {
-    // Skip page break lines
     if (obj._isPageBreak) return;
-    // Skip non-interactive objects (same filter as canvas)
     if (obj.selectable === false && obj.evented === false) return;
 
-    // Use getBoundingRect for accurate bounds (accounts for transforms)
     const rect = obj.getBoundingRect?.() || {
-      top: typeof obj.top === 'number' ? obj.top : 0,
-      height: typeof obj.height === 'number' ? obj.height : 0
+      top: typeof obj.top === "number" ? obj.top : 0,
+      height: typeof obj.height === "number" ? obj.height : 0,
     };
     const bottom = rect.top + rect.height;
 
@@ -48,106 +45,122 @@ export async function exportCanvasToPDF(
 ): Promise<Blob> {
   const {
     format = "a4",
-    quality = 1,
-    filename = "resume",
     addWatermark = false,
   } = options;
 
-  // Calculate actual content height
+  // Calculate number of pages
   const contentHeight = getActualContentHeight(canvas);
-
-  // Calculate number of pages needed (based on actual content, not canvas size)
-  // Only include a page if there's meaningful content on it (more than 10px past the boundary)
   const pageThreshold = 10;
   const numPages = Math.max(1, Math.ceil((contentHeight - pageThreshold) / CANVAS_HEIGHT));
 
-  console.log(`[Export] Content height: ${contentHeight}px, Pages needed: ${numPages}`);
+
+  // Save current state
+  const originalZoom = canvas.getZoom();
+  canvas.setZoom(1);
+
+  // Hide page break lines
+  const pageBreakLines: any[] = [];
+  canvas.getObjects().forEach((obj: any) => {
+    if (obj._isPageBreak) {
+      pageBreakLines.push(obj);
+      obj.set("visible", false);
+    }
+  });
+  canvas.renderAll();
 
   // Create PDF
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
     format,
+    compress: true,
   });
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
-  // Get canvas dimensions
-  const canvasWidth = canvas.getWidth();
-  const canvasHeight = canvas.getHeight();
-  const zoom = canvas.getZoom();
-
-  // Original canvas dimensions (without zoom)
-  const originalWidth = canvasWidth / zoom;
-  const originalHeight = canvasHeight / zoom;
-
-  // Hide page break lines before export
-  const pageBreakLines: any[] = [];
-  canvas.getObjects().forEach((obj: any) => {
-    if (obj._isPageBreak) {
-      pageBreakLines.push(obj);
-      obj.set('visible', false);
-    }
+  // Get SVG from canvas
+  let svgString = canvas.toSVG({
+    viewBox: {
+      x: 0,
+      y: 0,
+      width: CANVAS_WIDTH,
+      height: contentHeight,
+    },
+    width: `${CANVAS_WIDTH}px`,
+    height: `${contentHeight}px`,
   });
-  canvas.renderAll();
 
-  // For multi-page: render each page separately
+  // Normalize special Unicode characters that svg2pdf.js can't render properly
+  // These cause extra spacing in the PDF output
+  svgString = svgString
+    // Non-breaking hyphen (U+2011) -> regular hyphen
+    .replace(/\u2011/g, "-")
+    // Figure dash (U+2012) -> regular hyphen
+    .replace(/\u2012/g, "-")
+    // En dash (U+2013) -> regular hyphen
+    .replace(/\u2013/g, "-")
+    // Em dash (U+2014) -> regular hyphen
+    .replace(/\u2014/g, "--")
+    // Non-breaking space (U+00A0) -> regular space
+    .replace(/\u00A0/g, " ")
+    // Narrow no-break space (U+202F) -> regular space
+    .replace(/\u202F/g, " ")
+    // Zero-width space (U+200B) -> remove
+    .replace(/\u200B/g, "")
+    // Word joiner (U+2060) -> remove
+    .replace(/\u2060/g, "")
+    // Left/right single quotes -> regular quotes
+    .replace(/[\u2018\u2019]/g, "'")
+    // Left/right double quotes -> regular quotes
+    .replace(/[\u201C\u201D]/g, '"');
+
+  // Remove letter-spacing and word-spacing (just in case)
+  svgString = svgString.replace(/letter-spacing\s*:\s*[^;}"']+;?/gi, "");
+  svgString = svgString.replace(/\s*letter-spacing\s*=\s*["'][^"']*["']/gi, "");
+  svgString = svgString.replace(/word-spacing\s*:\s*[^;}"']+;?/gi, "");
+  svgString = svgString.replace(/\s*word-spacing\s*=\s*["'][^"']*["']/gi, "");
+
+  // Create SVG element
+  const parser = new DOMParser();
+  const svgDoc = parser.parseFromString(svgString, "image/svg+xml");
+  const svgElement = svgDoc.documentElement as unknown as SVGElement;
+
+  // Render each page
   for (let pageIndex = 0; pageIndex < numPages; pageIndex++) {
     if (pageIndex > 0) {
       pdf.addPage();
     }
 
-    // Create a temporary canvas for this page
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    if (!tempCtx) continue;
+    const pageY = pageIndex * CANVAS_HEIGHT;
 
-    // Set temp canvas size (2x for quality)
-    const multiplier = 2;
-    tempCanvas.width = CANVAS_WIDTH * multiplier;
-    tempCanvas.height = CANVAS_HEIGHT * multiplier;
+    // Clone SVG for this page
+    const pageSvg = svgElement.cloneNode(true) as SVGElement;
 
-    // Get the full canvas as image (page break lines are hidden)
-    const fullDataUrl = canvas.toDataURL({
-      format: "png",
-      quality,
-      multiplier,
-    });
+    // Set viewBox to show only this page's portion
+    pageSvg.setAttribute("viewBox", `0 ${pageY} ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`);
+    pageSvg.setAttribute("width", `${pageWidth}mm`);
+    pageSvg.setAttribute("height", `${pageHeight}mm`);
 
-    // Load the image
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = reject;
-      img.src = fullDataUrl;
-    });
+    // Add to document temporarily
+    pageSvg.style.position = "absolute";
+    pageSvg.style.left = "-9999px";
+    document.body.appendChild(pageSvg);
 
-    // Calculate source area for this page
-    const sourceY = pageIndex * CANVAS_HEIGHT * multiplier * (zoom);
-    const sourceHeight = CANVAS_HEIGHT * multiplier * zoom;
+    try {
+      await (pdf as any).svg(pageSvg, {
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+      });
+    } finally {
+      document.body.removeChild(pageSvg);
+    }
 
-    // Fill with white background
-    tempCtx.fillStyle = '#ffffff';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Draw the portion of the canvas for this page
-    tempCtx.drawImage(
-      img,
-      0, sourceY, // source x, y
-      img.width, sourceHeight, // source width, height
-      0, 0, // dest x, y
-      tempCanvas.width, tempCanvas.height // dest width, height
-    );
-
-    // Get page image
-    const pageDataUrl = tempCanvas.toDataURL('image/png', quality);
-
-    // Add to PDF
-    pdf.addImage(pageDataUrl, "PNG", 0, 0, pageWidth, pageHeight);
-
-    // Add watermark if needed (for free tier)
+    // Add watermark if needed
     if (addWatermark) {
+      pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
       pdf.setTextColor(200, 200, 200);
       pdf.text("Created with Resumeyro", pageWidth / 2, pageHeight - 5, {
@@ -156,13 +169,11 @@ export async function exportCanvasToPDF(
     }
   }
 
-  // Restore page break lines visibility
-  pageBreakLines.forEach((line) => {
-    line.set('visible', true);
-  });
+  // Restore state
+  pageBreakLines.forEach((line) => line.set("visible", true));
+  canvas.setZoom(originalZoom);
   canvas.renderAll();
 
-  // Return as blob
   return pdf.output("blob");
 }
 
@@ -173,7 +184,6 @@ export async function downloadPDF(
   const { filename = "resume" } = options;
   const blob = await exportCanvasToPDF(canvas, options);
 
-  // Create download link
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
