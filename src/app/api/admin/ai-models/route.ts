@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdmin, getSetting, SETTING_KEYS } from "@/lib/settings";
+import { getModelDescription } from "@/lib/ai/models-registry";
 
 interface ModelInfo {
   id: string;
@@ -8,6 +9,8 @@ interface ModelInfo {
   tier: string;
   contextWindow?: number;
   description?: string;
+  bestFor?: string;
+  strengths?: string[];
 }
 
 // Fallback models when API is not available
@@ -207,6 +210,22 @@ function formatModelName(id: string): string {
     .replace("O1", "o1");
 }
 
+// Enrich models with descriptions from registry
+function enrichModelsWithDescriptions(models: ModelInfo[]): ModelInfo[] {
+  return models.map((model) => {
+    const desc = getModelDescription(model.id);
+    if (desc) {
+      return {
+        ...model,
+        bestFor: desc.bestFor,
+        strengths: desc.strengths,
+        tier: desc.tier || model.tier, // Use description tier if available
+      };
+    }
+    return model;
+  });
+}
+
 // GET /api/admin/ai-models?provider=openai
 export async function GET(req: Request) {
   try {
@@ -240,9 +259,9 @@ export async function GET(req: Request) {
         googleKey ? fetchGoogleModels(googleKey) : Promise.resolve(FALLBACK_MODELS.google),
       ]);
 
-      results.openai = { models: openaiModels, hasKey: !!openaiKey };
-      results.anthropic = { models: anthropicModels, hasKey: !!anthropicKey };
-      results.google = { models: googleModels, hasKey: !!googleKey };
+      results.openai = { models: enrichModelsWithDescriptions(openaiModels), hasKey: !!openaiKey };
+      results.anthropic = { models: enrichModelsWithDescriptions(anthropicModels), hasKey: !!anthropicKey };
+      results.google = { models: enrichModelsWithDescriptions(googleModels), hasKey: !!googleKey };
 
       return NextResponse.json(results);
     }
@@ -270,7 +289,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       provider,
-      models,
+      models: enrichModelsWithDescriptions(models),
       hasKey: !!apiKey,
     });
   } catch (error) {

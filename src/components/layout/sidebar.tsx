@@ -15,6 +15,8 @@ import {
   Shield,
   Cpu,
   ToggleLeft,
+  Layers,
+  Calculator,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,6 +49,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: t("adminSettings"), href: "/admin/settings", icon: Shield },
     { name: t("aiTasks"), href: "/admin/ai-tasks", icon: Cpu },
     { name: t("features"), href: "/admin/features", icon: ToggleLeft },
+    { name: t("plans"), href: "/admin/plans", icon: Layers },
+    { name: t("pricingModel"), href: "/admin/pricing-model", icon: Calculator },
   ];
 
   useEffect(() => {
