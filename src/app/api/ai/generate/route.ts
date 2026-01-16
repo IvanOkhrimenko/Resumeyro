@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { db, safeDbOperation } from "@/lib/db";
 import { models, generateTextWithRetry } from "@/lib/ai/client";
 import { GENERATION_PROMPTS, fillPromptTemplate } from "@/lib/ai/prompts";
-import { PLANS } from "@/lib/constants";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { isAdminEmail } from "@/lib/settings";
 import { handleApiError } from "@/lib/api-utils";
 
@@ -33,8 +33,8 @@ export async function POST(req: Request) {
       });
 
       const plan = subscription?.plan || "FREE";
-      const planConfig = PLANS[plan];
-      const limit = planConfig.features.aiGenerations;
+      const planLimits = await getPlanLimits(plan);
+      const limit = planLimits.aiGenerations;
 
       if (limit !== -1) {
         // Check current month usage

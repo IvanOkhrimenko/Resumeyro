@@ -16,40 +16,83 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
   title: {
-    default: "Resumeyro - Create Professional Resumes with AI",
+    default: "Resumeyro - AI-Powered Resume Builder | Create Professional Resumes",
     template: "%s | Resumeyro",
   },
   description:
-    "Create stunning, ATS-friendly resumes with AI assistance. Professional templates, smart suggestions, and instant PDF export.",
+    "Create stunning, ATS-friendly resumes with AI assistance. Professional templates for US, EU, and Ukrainian job markets. Free to start.",
   keywords: [
     "resume builder",
     "CV creator",
     "AI resume",
     "professional resume",
     "job application",
+    "ATS-friendly resume",
+    "resume templates",
+    "CV maker",
+    "online resume builder",
+    "free resume builder",
   ],
   authors: [{ name: "Resumeyro" }],
+  creator: "Resumeyro",
+  publisher: "Resumeyro",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: process.env.NEXT_PUBLIC_APP_URL,
+    alternateLocale: "uk_UA",
+    url: baseUrl,
     siteName: "Resumeyro",
-    title: "Resumeyro - Create Professional Resumes with AI",
+    title: "Resumeyro - AI-Powered Resume Builder",
     description:
-      "Create stunning, ATS-friendly resumes with AI assistance. Professional templates, smart suggestions, and instant PDF export.",
+      "Create stunning, ATS-friendly resumes with AI assistance. Professional templates for US, EU, and Ukrainian job markets.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Resumeyro - AI-Powered Resume Builder",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Resumeyro - Create Professional Resumes with AI",
+    title: "Resumeyro - AI-Powered Resume Builder",
     description:
-      "Create stunning, ATS-friendly resumes with AI assistance.",
+      "Create stunning, ATS-friendly resumes with AI assistance. Free to start.",
+    images: ["/og-image.png"],
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
+  alternates: {
+    canonical: baseUrl,
+    languages: {
+      "en-US": baseUrl,
+      "uk-UA": baseUrl,
+    },
+  },
+  // verification: {
+  //   google: "your-google-verification-code",
+  // },
+  category: "technology",
 };
 
 export default async function RootLayout({

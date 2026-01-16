@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { isAdminEmail } from "@/lib/settings";
+import { isAdmin as checkIsAdmin } from "@/lib/settings";
+import { getPlanLimits } from "@/lib/subscription-plans";
 
 export async function GET() {
   try {
@@ -29,7 +30,10 @@ export async function GET() {
       });
     }
 
-    const isAdmin = isAdminEmail(session.user.email);
+    const isAdmin = await checkIsAdmin(session.user.id);
+
+    // Get plan limits including pdfWatermark
+    const planLimits = await getPlanLimits(subscription.plan, isAdmin);
 
     return NextResponse.json({
       plan: subscription.plan,
@@ -37,6 +41,7 @@ export async function GET() {
       currentPeriodEnd: subscription.currentPeriodEnd,
       stripeCustomerId: subscription.stripeCustomerId,
       isAdmin,
+      limits: planLimits,
     });
   } catch (error) {
     console.error("Error fetching subscription:", error);

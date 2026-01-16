@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import {
   ToggleLeft,
   Loader2,
@@ -34,12 +35,20 @@ const featureIcons: Record<string, React.ElementType> = {
   AI_TEXT_IMPROVEMENT: MessageSquareText,
 };
 
-const roleLabels: Record<UserRole, string> = {
-  USER: "Users",
-  ADMIN: "Admins",
+const featureTranslationKeys: Record<string, string> = {
+  SMART_FORMATTING: "featureSmartFormatting",
+  AI_REVIEW: "featureAiReview",
+  MULTI_MODEL_REVIEW: "featureMultiModelReview",
+  AI_TEXT_IMPROVEMENT: "featureAiTextImprovement",
+};
+
+const roleTranslationKeys: Record<UserRole, string> = {
+  USER: "roleUser",
+  ADMIN: "roleAdmin",
 };
 
 export default function FeaturesPage() {
+  const t = useTranslations("adminFeatures");
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [availableRoles, setAvailableRoles] = useState<UserRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,7 +69,7 @@ export default function FeaturesPage() {
     try {
       const res = await fetch("/api/admin/feature-flags");
       if (res.status === 403) {
-        setError("Admin access required");
+        setError(t("adminRequired"));
         return;
       }
       if (!res.ok) throw new Error("Failed to fetch");
@@ -68,7 +77,7 @@ export default function FeaturesPage() {
       setFlags(data.flags || []);
       setAvailableRoles(data.availableRoles || []);
     } catch {
-      setError("Failed to load feature flags");
+      setError(t("failedToLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -87,9 +96,10 @@ export default function FeaturesPage() {
         }),
       });
       if (!res.ok) throw new Error("Failed to save");
-      showSuccess(`${flag.name} updated`);
+      const featureName = t(featureTranslationKeys[flag.key] || flag.key);
+      showSuccess(t("featureUpdated", { feature: featureName }));
     } catch {
-      setError("Failed to save feature flag");
+      setError(t("failedToSave"));
     } finally {
       setSavingKey(null);
     }
@@ -151,10 +161,10 @@ export default function FeaturesPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-            Feature Flags
+            {t("title")}
           </h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Enable or disable features globally or for specific roles
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -164,18 +174,16 @@ export default function FeaturesPage() {
         <div className="flex items-start gap-3">
           <Shield className="mt-0.5 h-5 w-5 text-blue-600 dark:text-blue-400" />
           <div className="text-sm text-blue-800 dark:text-blue-200">
-            <p className="font-medium">How feature flags work:</p>
+            <p className="font-medium">{t("howItWorks")}</p>
             <ul className="mt-1 list-inside list-disc space-y-1 text-blue-700 dark:text-blue-300">
               <li>
-                <strong>Enabled</strong> — feature is available to everyone
+                {t("howItWorksEnabled")}
               </li>
               <li>
-                <strong>Disabled</strong> — feature is hidden, except for
-                selected roles
+                {t("howItWorksDisabled")}
               </li>
               <li>
-                <strong>Allowed Roles</strong> — these roles have access even
-                when disabled
+                {t("howItWorksRoles")}
               </li>
             </ul>
           </div>
@@ -220,11 +228,8 @@ export default function FeaturesPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-zinc-900 dark:text-white">
-                      {flag.name}
+                      {t(featureTranslationKeys[flag.key] || flag.key)}
                     </h3>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {flag.nameUk}
-                    </p>
                     <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
                       {flag.description}
                     </p>
@@ -255,7 +260,7 @@ export default function FeaturesPage() {
                 <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-700">
                   <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                     <Users className="h-4 w-4" />
-                    <span>Allowed roles (can access when disabled):</span>
+                    <span>{t("allowedRoles")}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {availableRoles.map((role) => {
@@ -272,7 +277,7 @@ export default function FeaturesPage() {
                           )}
                         >
                           {isSelected && <Check className="h-3.5 w-3.5" />}
-                          {roleLabels[role]}
+                          {t(roleTranslationKeys[role])}
                         </button>
                       );
                     })}
@@ -293,7 +298,7 @@ export default function FeaturesPage() {
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  Save
+                  {t("save")}
                 </Button>
               </div>
             </div>

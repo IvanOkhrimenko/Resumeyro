@@ -7,17 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getPlanLimits } from "@/lib/subscription-plans";
 
 export const metadata: Metadata = {
   title: "Dashboard - Resumeyro",
   description: "Manage your resumes and create new ones",
-};
-
-// Plan limits
-const PLAN_LIMITS = {
-  FREE: { resumes: 1, aiGenerations: 3 },
-  PRO: { resumes: 10, aiGenerations: 50 },
-  PREMIUM: { resumes: -1, aiGenerations: -1 }, // unlimited
 };
 
 async function getDashboardData(userId: string) {
@@ -69,7 +63,7 @@ async function getDashboardData(userId: string) {
   ]);
 
   const plan = subscription?.plan ?? "FREE";
-  const limits = PLAN_LIMITS[plan];
+  const limits = await getPlanLimits(plan);
   const aiGenerationsCount = aiGenerationsUsage?.count ?? 0;
 
   return {
@@ -77,7 +71,7 @@ async function getDashboardData(userId: string) {
     recentResumes,
     aiGenerationsCount,
     aiGenerationsLimit: limits.aiGenerations,
-    resumeLimit: limits.resumes,
+    resumeLimit: limits.maxResumes,
     plan,
     profileScore: latestReview?.score ?? null,
   };

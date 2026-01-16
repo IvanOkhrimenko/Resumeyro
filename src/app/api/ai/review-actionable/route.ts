@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { taskModels } from "@/lib/ai/client";
 import { ACTIONABLE_REVIEW_PROMPT, fillPromptTemplate } from "@/lib/ai/prompts";
-import { PLANS } from "@/lib/constants";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { isAdminEmail } from "@/lib/settings";
 import { parseJSONFromLLM } from "@/lib/ai/json-parser";
 import type { ActionableReviewResult } from "@/stores/ai-features-store";
@@ -32,8 +32,8 @@ export async function POST(req: Request) {
       });
 
       const plan = subscription?.plan || "FREE";
-      const planConfig = PLANS[plan];
-      const limit = planConfig.features.aiReviews;
+      const planLimits = await getPlanLimits(plan);
+      const limit = planLimits.aiReviews;
 
       if (limit === 0) {
         return NextResponse.json(

@@ -9,7 +9,13 @@ import {
   SETTING_KEYS,
   AI_PROVIDERS,
   type AIProvider,
+  type FallbackModel,
 } from "@/lib/settings";
+import {
+  isModelAllowedForPlan,
+  getTaskModelOverride,
+  getSubscriptionPlan,
+} from "@/lib/subscription-plans";
 
 // ============================================
 // AI Retry Configuration
@@ -221,6 +227,173 @@ export interface TaskModelConfig {
   maxTokens: number;
   provider: string;
   modelId: string;
+  fallbackModels: FallbackModel[];
+}
+
+// Extended params types that include commonly used AI parameters
+type GenerateTextParams = Omit<Parameters<typeof aiGenerateText>[0], "model"> & {
+  maxTokens?: number;
+  temperature?: number;
+};
+
+type GenerateObjectParams = Omit<Parameters<typeof aiGenerateObject>[0], "model"> & {
+  maxTokens?: number;
+  temperature?: number;
+};
+
+// ==================== Fallback Execution System ====================
+
+/**
+ * Check if an error should trigger a fallback to another model
+ */
+function shouldFallback(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // Rate limiting - definitely fallback
+    if (message.includes("rate limit") || message.includes("429") || message.includes("too many requests")) {
+      return true;
+    }
+
+    // Server errors - fallback
+    if (message.includes("500") || message.includes("502") || message.includes("503") || message.includes("504")) {
+      return true;
+    }
+
+    // Model overloaded
+    if (message.includes("overloaded") || message.includes("capacity")) {
+      return true;
+    }
+
+    // API key issues - might want to try different provider
+    if (message.includes("invalid api key") || message.includes("authentication") || message.includes("unauthorized")) {
+      return true;
+    }
+
+    // Network errors
+    if (
+      message.includes("timeout") ||
+      message.includes("econnrefused") ||
+      message.includes("econnreset") ||
+      message.includes("network")
+    ) {
+      return true;
+    }
+
+    // Model not found or unavailable
+    if (message.includes("not found") || message.includes("does not exist") || message.includes("unavailable")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export interface FallbackExecutionResult<T> {
+  result: T;
+  modelUsed: { provider: string; modelId: string };
+  fallbacksAttempted: number;
+}
+
+/**
+ * Execute an AI operation with automatic fallback to alternative models
+ *
+ * @param taskConfig - The task configuration with primary model and fallbacks
+ * @param operation - A function that takes a model and returns a promise
+ * @returns The result along with info about which model was used
+ */
+export async function executeWithFallback<T>(
+  taskConfig: TaskModelConfig,
+  operation: (model: ReturnType<ReturnType<typeof createOpenAI>>, config: { temperature: number; maxTokens: number }) => Promise<T>
+): Promise<FallbackExecutionResult<T>> {
+  const allModels = [
+    { provider: taskConfig.provider, modelId: taskConfig.modelId },
+    ...taskConfig.fallbackModels,
+  ];
+
+  let lastError: Error | null = null;
+  let fallbacksAttempted = 0;
+
+  for (let i = 0; i < allModels.length; i++) {
+    const modelConfig = allModels[i];
+    const isPrimary = i === 0;
+
+    try {
+      const model = await getModelForProvider(modelConfig.provider, modelConfig.modelId);
+
+      if (!isPrimary) {
+        console.log(`[AI Fallback] Trying fallback model ${i}/${allModels.length - 1}: ${modelConfig.provider}/${modelConfig.modelId}`);
+        fallbacksAttempted++;
+      }
+
+      const result = await operation(model, {
+        temperature: taskConfig.temperature,
+        maxTokens: taskConfig.maxTokens,
+      });
+
+      if (!isPrimary) {
+        console.log(`[AI Fallback] Success with fallback model: ${modelConfig.provider}/${modelConfig.modelId}`);
+      }
+
+      return {
+        result,
+        modelUsed: modelConfig,
+        fallbacksAttempted,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      console.warn(
+        `[AI Fallback] Model ${modelConfig.provider}/${modelConfig.modelId} failed:`,
+        lastError.message
+      );
+
+      // Check if we should try the next model
+      if (!shouldFallback(error) || i === allModels.length - 1) {
+        // Either error is not recoverable or we're out of fallbacks
+        throw error;
+      }
+
+      // Continue to next model
+    }
+  }
+
+  // Should never reach here, but just in case
+  throw lastError || new Error("All models failed");
+}
+
+/**
+ * Execute an AI text generation with automatic fallback
+ */
+export async function generateTextWithFallback(
+  taskConfig: TaskModelConfig,
+  params: GenerateTextParams
+): Promise<FallbackExecutionResult<Awaited<ReturnType<typeof aiGenerateText>>>> {
+  return executeWithFallback(taskConfig, async (model, config) => {
+    return aiGenerateText({
+      ...params,
+      model,
+      temperature: params.temperature ?? config.temperature,
+      maxTokens: params.maxTokens ?? config.maxTokens,
+    } as Parameters<typeof aiGenerateText>[0]);
+  });
+}
+
+/**
+ * Execute an AI object generation with automatic fallback
+ */
+export async function generateObjectWithFallback<T>(
+  taskConfig: TaskModelConfig,
+  params: GenerateObjectParams
+): Promise<FallbackExecutionResult<Awaited<ReturnType<typeof aiGenerateObject>>>> {
+  return executeWithFallback(taskConfig, async (model, config) => {
+    return aiGenerateObject({
+      ...params,
+      model,
+      temperature: params.temperature ?? config.temperature,
+      maxTokens: params.maxTokens ?? config.maxTokens,
+    } as Parameters<typeof aiGenerateObject>[0]);
+  });
 }
 
 // Get model configured for a specific task type
@@ -239,7 +412,114 @@ export async function getModelForTask(taskType: AITaskType): Promise<TaskModelCo
     maxTokens: config.maxTokens,
     provider: config.provider,
     modelId: config.modelId,
+    fallbackModels: config.fallbackModels,
   };
+}
+
+// Get model for task with plan-based restrictions
+export async function getModelForTaskWithPlanCheck(
+  taskType: AITaskType,
+  userPlanKey: string
+): Promise<TaskModelConfig> {
+  // First check if there's a plan-specific override for this task
+  const planOverride = await getTaskModelOverride(userPlanKey, taskType);
+  const baseConfig = await getAITaskConfig(taskType);
+
+  if (planOverride) {
+    // Use plan-specific model override
+    const model = await getModelForProvider(planOverride.provider, planOverride.modelId);
+
+    return {
+      model,
+      temperature: baseConfig.temperature,
+      maxTokens: baseConfig.maxTokens,
+      provider: planOverride.provider,
+      modelId: planOverride.modelId,
+      fallbackModels: baseConfig.fallbackModels,
+    };
+  }
+
+  // Get the default task config
+  const config = baseConfig;
+
+  if (!config.isEnabled) {
+    throw new Error(`AI task ${taskType} is disabled`);
+  }
+
+  // Check if the model is allowed for this plan
+  const isAllowed = await isModelAllowedForPlan(userPlanKey, config.modelId);
+
+  if (!isAllowed) {
+    // Try to find an allowed alternative model
+    const plan = await getSubscriptionPlan(userPlanKey);
+    if (!plan || plan.allowedModels.length === 0) {
+      throw new Error(
+        `Your subscription plan does not include access to AI models. Please upgrade your plan.`
+      );
+    }
+
+    // Use the first allowed model as fallback
+    const fallbackModelId = plan.allowedModels[0];
+    // Determine provider from model ID
+    const fallbackProvider = fallbackModelId.includes("gpt")
+      ? AI_PROVIDERS.OPENAI
+      : fallbackModelId.includes("claude")
+        ? AI_PROVIDERS.ANTHROPIC
+        : fallbackModelId.includes("gemini")
+          ? AI_PROVIDERS.GOOGLE
+          : AI_PROVIDERS.ANTHROPIC;
+
+    console.warn(
+      `[AI Client] Model ${config.modelId} not allowed for plan ${userPlanKey}, using fallback: ${fallbackModelId}`
+    );
+
+    const model = await getModelForProvider(fallbackProvider, fallbackModelId);
+
+    return {
+      model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      provider: fallbackProvider,
+      modelId: fallbackModelId,
+      fallbackModels: config.fallbackModels,
+    };
+  }
+
+  // Model is allowed, use it
+  const model = await getModelForProvider(config.provider, config.modelId);
+
+  return {
+    model,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+    provider: config.provider,
+    modelId: config.modelId,
+    fallbackModels: config.fallbackModels,
+  };
+}
+
+// Check if a specific model is allowed for a user's plan
+export async function checkModelAccess(
+  modelId: string,
+  userPlanKey: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  const isAllowed = await isModelAllowedForPlan(userPlanKey, modelId);
+
+  if (!isAllowed) {
+    const plan = await getSubscriptionPlan(userPlanKey);
+    if (!plan) {
+      return { allowed: false, reason: "Subscription plan not found" };
+    }
+    if (plan.allowedModels.length === 0) {
+      return { allowed: false, reason: "Your plan does not include AI model access" };
+    }
+    return {
+      allowed: false,
+      reason: `Model ${modelId} is not available on your ${plan.name} plan`,
+    };
+  }
+
+  return { allowed: true };
 }
 
 // ==================== Legacy model aliases (for backwards compatibility) ====================
@@ -310,3 +590,49 @@ export const taskModels = {
   translation: () => getModelForTask("TRANSLATION"),
   imageGeneration: () => getModelForTask("IMAGE_GENERATION"),
 };
+
+// ==================== Task-based Fallback Execution ====================
+
+/**
+ * Execute AI text generation for a specific task type with automatic fallback
+ * This is the recommended way to call AI with built-in resilience
+ */
+export async function generateTextForTask(
+  taskType: AITaskType,
+  params: GenerateTextParams,
+  options?: { userPlanKey?: string }
+): Promise<{ text: string; modelUsed: { provider: string; modelId: string }; fallbacksAttempted: number }> {
+  const taskConfig = options?.userPlanKey
+    ? await getModelForTaskWithPlanCheck(taskType, options.userPlanKey)
+    : await getModelForTask(taskType);
+
+  const result = await generateTextWithFallback(taskConfig, params);
+
+  return {
+    text: result.result.text,
+    modelUsed: result.modelUsed,
+    fallbacksAttempted: result.fallbacksAttempted,
+  };
+}
+
+/**
+ * Execute AI object generation for a specific task type with automatic fallback
+ * This is the recommended way to call AI with built-in resilience
+ */
+export async function generateObjectForTask<T>(
+  taskType: AITaskType,
+  params: GenerateObjectParams,
+  options?: { userPlanKey?: string }
+): Promise<{ object: T; modelUsed: { provider: string; modelId: string }; fallbacksAttempted: number }> {
+  const taskConfig = options?.userPlanKey
+    ? await getModelForTaskWithPlanCheck(taskType, options.userPlanKey)
+    : await getModelForTask(taskType);
+
+  const result = await generateObjectWithFallback<T>(taskConfig, params);
+
+  return {
+    object: (result.result as any).object as T,
+    modelUsed: result.modelUsed,
+    fallbacksAttempted: result.fallbacksAttempted,
+  };
+}

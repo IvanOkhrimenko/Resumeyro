@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { taskModels, models } from "@/lib/ai/client";
 import { FORMAT_ANALYSIS_PROMPT, fillPromptTemplate } from "@/lib/ai/prompts";
-import { PLANS } from "@/lib/constants";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { isAdminEmail } from "@/lib/settings";
 import { parseJSONFromLLM } from "@/lib/ai/json-parser";
 import type { FormattingResult } from "@/stores/ai-features-store";
@@ -30,8 +30,8 @@ export async function POST(req: Request) {
       });
 
       const plan = subscription?.plan || "FREE";
-      const planConfig = PLANS[plan];
-      const limit = planConfig.features.aiGenerations;
+      const planLimits = await getPlanLimits(plan);
+      const limit = planLimits.aiGenerations;
 
       if (limit !== -1) {
         // Check current month usage

@@ -7,17 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { PLANS } from "@/lib/constants";
+
+// Helper to format feature counts
+const formatCount = (count: number) => count === -1 ? "Unlimited" : count.toString();
 
 const plans = [
   {
-    id: "FREE",
-    name: "Free",
-    price: 0,
+    id: "FREE" as const,
+    name: PLANS.FREE.name,
+    price: PLANS.FREE.price,
     description: "Perfect for trying out the platform",
     features: [
-      { text: "1 resume", included: true },
+      { text: `${PLANS.FREE.features.resumes} resume`, included: true },
       { text: "Basic templates", included: true },
-      { text: "3 AI generations/month", included: true },
+      { text: `${PLANS.FREE.features.aiGenerations} AI generations/month`, included: true },
       { text: "PDF export with watermark", included: true },
       { text: "AI resume review", included: false },
       { text: "Premium templates", included: false },
@@ -26,33 +30,31 @@ const plans = [
     popular: false,
   },
   {
-    id: "PRO",
-    name: "Pro",
-    price: 9,
+    id: "PRO" as const,
+    name: PLANS.PRO.name,
+    price: PLANS.PRO.price,
     description: "For professionals who need more",
     features: [
-      { text: "5 resumes", included: true },
+      { text: `${PLANS.PRO.features.resumes} resumes`, included: true },
       { text: "All templates", included: true },
-      { text: "50 AI generations/month", included: true },
+      { text: `${PLANS.PRO.features.aiGenerations} AI generations/month`, included: true },
       { text: "PDF export without watermark", included: true },
-      { text: "3 AI reviews/month", included: true },
-      { text: "Priority support", included: true },
+      { text: `${PLANS.PRO.features.aiReviews} AI reviews/month`, included: true },
     ],
     cta: "Subscribe",
     popular: true,
   },
   {
-    id: "PREMIUM",
-    name: "Premium",
-    price: 19,
+    id: "PREMIUM" as const,
+    name: PLANS.PREMIUM.name,
+    price: PLANS.PREMIUM.price,
     description: "Unlimited everything for power users",
     features: [
-      { text: "Unlimited resumes", included: true },
+      { text: `${formatCount(PLANS.PREMIUM.features.resumes)} resumes`, included: true },
       { text: "All templates", included: true },
-      { text: "Unlimited AI generations", included: true },
+      { text: `${formatCount(PLANS.PREMIUM.features.aiGenerations)} AI generations`, included: true },
       { text: "PDF export without watermark", included: true },
-      { text: "Unlimited AI reviews", included: true },
-      { text: "Priority support", included: true },
+      { text: `${formatCount(PLANS.PREMIUM.features.aiReviews)} AI reviews`, included: true },
     ],
     cta: "Subscribe",
     popular: false,

@@ -3,39 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, FileText, Globe } from "lucide-react";
+import { ArrowLeft, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
-
-const regions = [
-  {
-    id: "US",
-    name: "United States",
-    flag: "🇺🇸",
-    description: "No photo, single column layout",
-  },
-  {
-    id: "EU",
-    name: "European Union",
-    flag: "🇪🇺",
-    description: "Europass style with photo",
-  },
-  {
-    id: "UA",
-    name: "Ukraine",
-    flag: "🇺🇦",
-    description: "Formal style with photo",
-  },
-];
 
 export default function NewResumePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [selectedRegion, setSelectedRegion] = useState<string>("US");
   const [isCreating, setIsCreating] = useState(false);
   const { toast } = useToast();
 
@@ -52,7 +29,6 @@ export default function NewResumePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          region: selectedRegion,
         }),
       });
 
@@ -94,7 +70,7 @@ export default function NewResumePage() {
             Resume Details
           </CardTitle>
           <CardDescription>
-            Give your resume a name and select the target region
+            Give your resume a name and configure basic settings
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -107,34 +83,6 @@ export default function NewResumePage() {
               onChange={(e) => setTitle(e.target.value)}
               disabled={isCreating}
             />
-          </div>
-
-          <div className="space-y-3">
-            <Label className="flex items-center gap-2">
-              <Globe className="h-4 w-4" />
-              Target Region
-            </Label>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {regions.map((region) => (
-                <button
-                  key={region.id}
-                  onClick={() => setSelectedRegion(region.id)}
-                  disabled={isCreating}
-                  className={cn(
-                    "flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all hover:border-zinc-400 dark:hover:border-zinc-600",
-                    selectedRegion === region.id
-                      ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800"
-                      : "border-zinc-200 dark:border-zinc-700"
-                  )}
-                >
-                  <span className="text-2xl">{region.flag}</span>
-                  <span className="font-medium">{region.name}</span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {region.description}
-                  </span>
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="flex gap-3 pt-4">

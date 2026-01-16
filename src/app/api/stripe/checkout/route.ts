@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createCheckoutSession } from "@/lib/stripe";
-import { PLANS } from "@/lib/constants";
+import { getSubscriptionPlan } from "@/lib/subscription-plans";
 
 export async function POST(req: Request) {
   try {
@@ -15,17 +15,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const { plan } = await req.json();
+    const { plan, billingPeriod = "monthly" } = await req.json();
 
-    if (!plan || !["PRO", "PREMIUM"].includes(plan)) {
+    if (!plan || plan === "FREE") {
       return NextResponse.json(
         { error: "Invalid plan selected" },
         { status: 400 }
       );
     }
 
-    const planConfig = PLANS[plan as "PRO" | "PREMIUM"];
-    const priceId = planConfig.stripePriceId;
+    // Get plan config from database
+    const planConfig = await getSubscriptionPlan(plan);
+
+    if (!planConfig) {
+      return NextResponse.json(
+        { error: "Plan not found" },
+        { status: 404 }
+      );
+    }
+
+    // Get the appropriate price ID based on billing period
+    const priceId = billingPeriod === "yearly"
+      ? planConfig.stripePriceIdYearly
+      : planConfig.stripePriceIdMonthly;
 
     if (!priceId) {
       return NextResponse.json(

@@ -12,7 +12,7 @@ export function Footer() {
   return (
     <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       <div className="container mx-auto px-4 py-12">
-        <div className="grid gap-8 md:grid-cols-4">
+        <div className="grid gap-8 md:grid-cols-3">
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2 font-bold">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900">
@@ -29,39 +29,13 @@ export function Footer() {
             <h3 className="mb-4 text-sm font-semibold">{t("product")}</h3>
             <ul className="space-y-2 text-sm text-zinc-500 dark:text-zinc-400">
               <li>
-                <Link href="/templates" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  {tNav("templates")}
-                </Link>
-              </li>
-              <li>
                 <Link href="/pricing" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  Pricing
+                  {t("pricing")}
                 </Link>
               </li>
               <li>
-                <Link href="/features" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  {t("features")}
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="mb-4 text-sm font-semibold">{t("resources")}</h3>
-            <ul className="space-y-2 text-sm text-zinc-500 dark:text-zinc-400">
-              <li>
-                <Link href="/blog" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  {t("blog")}
-                </Link>
-              </li>
-              <li>
-                <Link href="/guides" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  {t("careerGuides")}
-                </Link>
-              </li>
-              <li>
-                <Link href="/examples" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-                  {t("resumeExamples")}
+                <Link href="/register" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                  {tNav("getStarted")}
                 </Link>
               </li>
             </ul>

@@ -83,7 +83,7 @@ export function getEffectivePlan(
   return plan in PLANS ? plan : "FREE";
 }
 
-// Get plan features with admin check
+// Get plan features with admin check (sync version - uses hardcoded values)
 export function getPlanFeatures(
   subscriptionPlan: string | null | undefined,
   isAdmin: boolean
@@ -91,3 +91,14 @@ export function getPlanFeatures(
   const effectivePlan = getEffectivePlan(subscriptionPlan, isAdmin);
   return PLANS[effectivePlan].features;
 }
+
+// ==================== Async functions with DB fallback ====================
+// Import these from subscription-plans.ts for DB-backed features:
+// - getPlanLimits(planKey, isAdmin) - async, reads from DB
+// - getSubscriptionPlan(key) - async, reads from DB with caching
+// - isModelAllowedForPlan(planKey, modelId) - async, checks model access
+//
+// The PLANS constant above is kept for:
+// 1. Backwards compatibility with sync code
+// 2. Fallback when DB is unavailable
+// 3. Initial seeding of SubscriptionPlanConfig table

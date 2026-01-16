@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { db, withRetry, safeDbOperation } from "@/lib/db";
-import { SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
+import { SubscriptionStatus } from "@prisma/client";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -187,7 +187,7 @@ async function handlePaymentFailed(
 // Helper Functions
 // ============================================
 
-function getPlanFromPriceId(priceId: string): SubscriptionPlan {
+function getPlanFromPriceId(priceId: string): string {
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
     return "PRO";
   }

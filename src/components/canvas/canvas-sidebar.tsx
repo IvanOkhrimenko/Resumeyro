@@ -25,9 +25,10 @@ import {
   Crown,
   Layers,
 } from "lucide-react";
-import { IText, Textbox, FabricImage } from "fabric";
+import { IText, Textbox, FabricImage, Path } from "fabric";
 import { nanoid } from "nanoid";
 import { PhotoEditorModal } from "./photo-editor-modal";
+import { ICON_PATHS, type IconName } from "@/lib/canvas/icons";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { MARGIN_LEFT, CONTENT_WIDTH, GRID_SIZE } from "./resume-canvas";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,9 @@ export function CanvasSidebar() {
   // Photo editor modal
   const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
   const [photoEditorImageUrl, setPhotoEditorImageUrl] = useState<string>("");
+
+  // Icons panel
+  const [showIconsPanel, setShowIconsPanel] = useState(false);
 
   // ==========================================
   // OPTIMIZED HOOKS - Consolidated subscriptions
@@ -1241,6 +1245,49 @@ export function CanvasSidebar() {
     requestCanvasResize();
   }, [canvas, templateStyle, findLowestPoint, saveToHistory, requestCanvasResize]);
 
+  // Add SVG icon to canvas
+  const addIconToCanvas = useCallback((iconName: IconName) => {
+    if (!canvas) return;
+
+    const { isLoading } = useCanvasStore.getState();
+    if (isLoading) return;
+
+    const pathData = ICON_PATHS[iconName];
+    const iconSize = 16; // Default size
+    const scale = iconSize / 24; // Icons are 24x24 base
+
+    // Find a good position - either near selected object or at a default location
+    const activeObject = canvas.getActiveObject();
+    let left = MARGIN_LEFT;
+    let top = 100;
+
+    if (activeObject) {
+      // Place near the selected object
+      left = (activeObject.left || 0) - iconSize - 8;
+      top = activeObject.top || 100;
+    }
+
+    const iconPath = new Path(pathData, {
+      left,
+      top,
+      scaleX: scale,
+      scaleY: scale,
+      fill: templateStyle.colors.body,
+      originX: "left",
+      originY: "top",
+    });
+
+    (iconPath as any).id = nanoid();
+    (iconPath as any).semanticType = `icon_${iconName}`;
+    (iconPath as any).iconName = iconName;
+
+    canvas.add(iconPath);
+    canvas.setActiveObject(iconPath);
+    canvas.renderAll();
+    saveToHistory();
+    setShowIconsPanel(false);
+  }, [canvas, templateStyle, saveToHistory]);
+
   // Render the appropriate form component for a section type
   // Using memoized form components to prevent re-renders
   const renderSectionForm = useCallback((sectionType: SectionType) => {
@@ -1913,6 +1960,44 @@ export function CanvasSidebar() {
               <Type className="h-3.5 w-3.5 text-zinc-500" />
               <span className="text-zinc-700 dark:text-zinc-300">Text</span>
             </button>
+          </div>
+
+          {/* Icons Panel */}
+          <div className="mt-3">
+            <button
+              onClick={() => setShowIconsPanel(!showIconsPanel)}
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-xs transition-colors",
+                showIconsPanel
+                  ? "border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20"
+                  : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <svg className="h-3.5 w-3.5 text-zinc-500" viewBox="0 0 24 24" fill="currentColor">
+                  <path d={ICON_PATHS.location} />
+                </svg>
+                <span className="text-zinc-700 dark:text-zinc-300">Icons</span>
+              </div>
+              <ChevronDown className={cn("h-3.5 w-3.5 text-zinc-400 transition-transform", showIconsPanel && "rotate-180")} />
+            </button>
+
+            {showIconsPanel && (
+              <div className="mt-2 grid grid-cols-5 gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-800/50">
+                {(Object.keys(ICON_PATHS) as IconName[]).map((iconName) => (
+                  <button
+                    key={iconName}
+                    onClick={() => addIconToCanvas(iconName)}
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-transparent transition-colors hover:border-violet-300 hover:bg-violet-100 dark:hover:border-violet-700 dark:hover:bg-violet-900/30"
+                    title={iconName.charAt(0).toUpperCase() + iconName.slice(1)}
+                  >
+                    <svg className="h-4 w-4 text-zinc-600 dark:text-zinc-400" viewBox="0 0 24 24" fill="currentColor">
+                      <path d={ICON_PATHS[iconName]} />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

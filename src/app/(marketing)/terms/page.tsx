@@ -1,16 +1,43 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { FileText, ArrowLeft } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { BreadcrumbJsonLd } from "@/components/seo/json-ld";
+
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
 
 export const metadata: Metadata = {
-  title: "Terms of Service - Resumeyro",
-  description: "Terms of Service for Resumeyro - AI-Powered Resume Builder. Read our terms and conditions for using our service.",
+  title: "Terms of Service - Resumeyro | User Agreement",
+  description: "Terms of Service for Resumeyro AI Resume Builder. Read our terms and conditions, subscription policies, and acceptable use guidelines.",
+  alternates: {
+    canonical: `${baseUrl}/terms`,
+  },
+  openGraph: {
+    title: "Terms of Service - Resumeyro",
+    description: "Read the terms and conditions for using Resumeyro AI Resume Builder.",
+    url: `${baseUrl}/terms`,
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
-export default function TermsOfServicePage() {
+export default async function TermsOfServicePage() {
+  const t = await getTranslations("terms");
+  const tCommon = await getTranslations("common");
+  const tFooter = await getTranslations("footer");
   const lastUpdated = "January 15, 2025";
 
   return (
+    <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: baseUrl },
+          { name: "Terms of Service", url: `${baseUrl}/terms` },
+        ]}
+      />
     <div className="py-16 md:py-24">
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-3xl">
@@ -20,7 +47,7 @@ export default function TermsOfServicePage() {
             className="mb-8 inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to home
+            {tCommon("backToHome")}
           </Link>
 
           {/* Header */}
@@ -30,219 +57,219 @@ export default function TermsOfServicePage() {
                 <FileText className="h-6 w-6 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Terms of Service</h1>
-                <p className="text-sm text-zinc-500">Last updated: {lastUpdated}</p>
+                <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{t("title")}</h1>
+                <p className="text-sm text-zinc-500">{t("lastUpdated", { date: lastUpdated })}</p>
               </div>
             </div>
             <p className="text-lg text-zinc-600 dark:text-zinc-400">
-              Please read these terms carefully before using Resumeyro. By using our service, you agree to these terms.
+              {t("intro")}
             </p>
           </div>
 
           {/* Content */}
           <div className="prose prose-zinc dark:prose-invert max-w-none">
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">1. Acceptance of Terms</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section1Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                By accessing or using Resumeyro ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the Service.
+                {t("section1_text1")}
               </p>
               <p className="text-zinc-600 dark:text-zinc-400 mt-4">
-                We may modify these Terms at any time. Continued use of the Service after changes constitutes acceptance of the new Terms.
+                {t("section1_text2")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">2. Description of Service</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section2Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Resumeyro is an AI-powered resume building platform that provides:
+                {t("section2_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400 mt-4">
-                <li>Resume creation and editing tools</li>
-                <li>AI-powered content generation and review</li>
-                <li>Professional templates for various markets (US, EU, Ukraine)</li>
-                <li>PDF export functionality</li>
-                <li>Cloud storage for your resumes</li>
+                <li>{t("section2_creation")}</li>
+                <li>{t("section2_ai")}</li>
+                <li>{t("section2_templates")}</li>
+                <li>{t("section2_pdf")}</li>
+                <li>{t("section2_storage")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">3. User Accounts</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section3Title")}</h2>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">3.1 Registration</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section3_1Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                You must provide accurate and complete information when creating an account. You are responsible for maintaining the security of your account credentials.
+                {t("section3_1_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">3.2 Account Responsibility</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section3_2Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                You are responsible for all activities that occur under your account. Notify us immediately of any unauthorized use.
+                {t("section3_2_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">3.3 Age Requirement</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section3_3Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                You must be at least 16 years old to use the Service. By using Resumeyro, you represent that you meet this requirement.
+                {t("section3_3_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">4. Subscriptions and Payments</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section4Title")}</h2>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">4.1 Free and Paid Plans</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section4_1Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We offer free and paid subscription plans. Paid plans provide additional features as described on our pricing page.
+                {t("section4_1_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">4.2 Billing</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section4_2Title")}</h3>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>Paid subscriptions are billed monthly or annually</li>
-                <li>Payments are processed through Stripe</li>
-                <li>Subscriptions automatically renew unless cancelled</li>
-                <li>Prices may change with 30 days notice</li>
+                <li>{t("section4_2_monthly")}</li>
+                <li>{t("section4_2_stripe")}</li>
+                <li>{t("section4_2_renew")}</li>
+                <li>{t("section4_2_price")}</li>
               </ul>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">4.3 Cancellation and Refunds</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section4_3Title")}</h3>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>You can cancel your subscription at any time</li>
-                <li>Cancellation takes effect at the end of the current billing period</li>
-                <li>Refunds are provided within 7 days of purchase if you haven't used AI features</li>
-                <li>Contact support for refund requests</li>
+                <li>{t("section4_3_cancel")}</li>
+                <li>{t("section4_3_end")}</li>
+                <li>{t("section4_3_refund")}</li>
+                <li>{t("section4_3_contact")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">5. Acceptable Use</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section5Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                You agree NOT to:
+                {t("section5_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>Use the Service for any illegal purpose</li>
-                <li>Submit false or misleading information</li>
-                <li>Attempt to bypass security measures or access restrictions</li>
-                <li>Use automated tools to access the Service without permission</li>
-                <li>Share your account with others or resell access</li>
-                <li>Upload malicious content or malware</li>
-                <li>Infringe on intellectual property rights</li>
-                <li>Harass, abuse, or harm others</li>
+                <li>{t("section5_illegal")}</li>
+                <li>{t("section5_false")}</li>
+                <li>{t("section5_security")}</li>
+                <li>{t("section5_automated")}</li>
+                <li>{t("section5_share")}</li>
+                <li>{t("section5_malware")}</li>
+                <li>{t("section5_ip")}</li>
+                <li>{t("section5_harass")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">6. Intellectual Property</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section6Title")}</h2>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">6.1 Your Content</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section6_1Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                You retain ownership of the content you create. By using the Service, you grant us a license to store, process, and display your content as necessary to provide the Service.
+                {t("section6_1_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">6.2 Our Content</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section6_2Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                The Service, including templates, designs, and software, is owned by Resumeyro. You may not copy, modify, or redistribute our content without permission.
+                {t("section6_2_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">6.3 AI-Generated Content</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section6_3Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Content generated by AI based on your input belongs to you. However, similar content may be generated for other users based on their input.
+                {t("section6_3_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">7. AI Services</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section7Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                Our AI features are powered by third-party providers. You acknowledge that:
+                {t("section7_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>AI-generated content may not always be accurate or appropriate</li>
-                <li>You are responsible for reviewing and editing AI suggestions</li>
-                <li>AI usage is subject to fair use limits based on your plan</li>
-                <li>We may modify or discontinue AI features with notice</li>
+                <li>{t("section7_accuracy")}</li>
+                <li>{t("section7_review")}</li>
+                <li>{t("section7_limits")}</li>
+                <li>{t("section7_modify")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">8. Privacy</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section8Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Your use of the Service is subject to our <Link href="/privacy" className="text-blue-600 hover:underline dark:text-blue-400">Privacy Policy</Link>, which explains how we collect, use, and protect your data.
+                {t("section8_text")} <Link href="/privacy" className="text-blue-600 hover:underline dark:text-blue-400">{tFooter("privacyPolicy")}</Link>
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">9. Disclaimers</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section9Title")}</h2>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">9.1 Service Availability</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section9_1Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                The Service is provided "as is" without warranties of any kind. We do not guarantee uninterrupted or error-free operation.
+                {t("section9_1_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">9.2 Resume Effectiveness</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section9_2Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We do not guarantee that resumes created with our Service will result in job interviews or employment. Success depends on many factors beyond our control.
+                {t("section9_2_text")}
               </p>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">9.3 Third-Party Services</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section9_3Title")}</h3>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We are not responsible for third-party services (Stripe, AI providers) used in connection with the Service.
+                {t("section9_3_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">10. Limitation of Liability</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section10Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                To the maximum extent permitted by law:
+                {t("section10_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400 mt-4">
-                <li>We are not liable for indirect, incidental, or consequential damages</li>
-                <li>Our total liability is limited to the amount you paid us in the past 12 months</li>
-                <li>We are not liable for data loss; you should maintain backups</li>
+                <li>{t("section10_indirect")}</li>
+                <li>{t("section10_total")}</li>
+                <li>{t("section10_data")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">11. Indemnification</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section11Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                You agree to indemnify and hold us harmless from any claims, damages, or expenses arising from your use of the Service or violation of these Terms.
+                {t("section11_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">12. Termination</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section12Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                We may suspend or terminate your account if you violate these Terms. Upon termination:
+                {t("section12_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>Your right to use the Service ends immediately</li>
-                <li>We may delete your data after 30 days</li>
-                <li>Sections that should survive termination will remain in effect</li>
+                <li>{t("section12_ends")}</li>
+                <li>{t("section12_delete")}</li>
+                <li>{t("section12_survive")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">13. Governing Law</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section13Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                These Terms are governed by the laws of Ukraine. Any disputes shall be resolved in the courts of Kyiv, Ukraine, unless local consumer protection laws require otherwise.
+                {t("section13_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">14. Dispute Resolution</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section14Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Before filing a legal claim, you agree to try to resolve disputes informally by contacting us. If we cannot resolve the dispute within 30 days, either party may proceed with legal action.
+                {t("section14_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">15. General Provisions</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section15Title")}</h2>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Entire Agreement:</strong> These Terms constitute the entire agreement between you and Resumeyro</li>
-                <li><strong>Severability:</strong> If any provision is unenforceable, the rest remains in effect</li>
-                <li><strong>No Waiver:</strong> Our failure to enforce a right does not waive that right</li>
-                <li><strong>Assignment:</strong> You may not transfer your rights under these Terms</li>
+                <li><strong>{t("section15_entire")}</strong></li>
+                <li><strong>{t("section15_severability")}</strong></li>
+                <li><strong>{t("section15_waiver")}</strong></li>
+                <li><strong>{t("section15_assignment")}</strong></li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">16. Contact Us</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section16Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                For questions about these Terms:
+                {t("section16_text")}
               </p>
               <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p className="text-zinc-900 dark:text-zinc-100 font-medium">Resumeyro</p>
@@ -254,15 +281,16 @@ export default function TermsOfServicePage() {
           {/* Footer links */}
           <div className="mt-12 flex flex-wrap gap-4 border-t border-zinc-200 pt-8 dark:border-zinc-800">
             <Link href="/privacy" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-              Privacy Policy
+              {tFooter("privacyPolicy")}
             </Link>
             <span className="text-zinc-300 dark:text-zinc-700">|</span>
             <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-              Back to Resumeyro
+              {tCommon("backToHome")}
             </Link>
           </div>
         </div>
       </div>
     </div>
+    </>
   );
 }

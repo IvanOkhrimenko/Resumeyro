@@ -5,17 +5,9 @@ import { templates } from "@/lib/templates";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const region = searchParams.get("region");
     const category = searchParams.get("category");
 
     let filteredTemplates = [...templates];
-
-    if (region) {
-      // Include both region-specific templates AND international templates
-      filteredTemplates = filteredTemplates.filter(
-        (t) => t.region === region || t.region === "INTL"
-      );
-    }
 
     if (category) {
       filteredTemplates = filteredTemplates.filter((t) => t.category === category);

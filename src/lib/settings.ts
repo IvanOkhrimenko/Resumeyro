@@ -1,5 +1,5 @@
 import { db } from "./db";
-import type { AITaskType } from "@prisma/client";
+import type { AITaskType, Prisma } from "@prisma/client";
 
 // AI Provider options
 export const AI_PROVIDERS = {
@@ -219,16 +219,51 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 
 // ==================== AI Task Configuration ====================
 
+export interface FallbackModel {
+  provider: string;
+  modelId: string;
+}
+
 export interface AITaskConfigData {
   taskType: AITaskType;
   provider: string;
   modelId: string;
+  fallbackModels: FallbackModel[];
   customApiUrl?: string | null;
   customApiKeyRef?: string | null;
   temperature: number;
   maxTokens: number;
   isEnabled: boolean;
 }
+
+// Default fallback chains per task type - ensure continuity of service
+const DEFAULT_FALLBACK_CHAINS: Record<AITaskType, FallbackModel[]> = {
+  RESUME_PARSING: [
+    { provider: "openai", modelId: "gpt-4o" },
+    { provider: "google", modelId: "gemini-1.5-pro" },
+  ],
+  RESUME_GENERATION: [
+    { provider: "openai", modelId: "gpt-4o" },
+    { provider: "google", modelId: "gemini-1.5-pro" },
+  ],
+  TEXT_IMPROVEMENT: [
+    { provider: "openai", modelId: "gpt-4o-mini" },
+    { provider: "google", modelId: "gemini-1.5-flash" },
+  ],
+  RESUME_REVIEW: [
+    { provider: "openai", modelId: "gpt-4o" },
+    { provider: "google", modelId: "gemini-1.5-pro" },
+  ],
+  STYLE_FORMATTING: [
+    { provider: "openai", modelId: "gpt-4o" },
+    { provider: "google", modelId: "gemini-1.5-pro" },
+  ],
+  IMAGE_GENERATION: [],
+  TRANSLATION: [
+    { provider: "openai", modelId: "gpt-4o-mini" },
+    { provider: "google", modelId: "gemini-1.5-flash" },
+  ],
+};
 
 // Get configuration for a specific AI task
 export async function getAITaskConfig(taskType: AITaskType): Promise<AITaskConfigData> {
@@ -242,6 +277,7 @@ export async function getAITaskConfig(taskType: AITaskType): Promise<AITaskConfi
         taskType: config.taskType,
         provider: config.provider,
         modelId: config.modelId,
+        fallbackModels: (config.fallbackModels as unknown as FallbackModel[]) || [],
         customApiUrl: config.customApiUrl,
         customApiKeyRef: config.customApiKeyRef,
         temperature: config.temperature,
@@ -253,12 +289,13 @@ export async function getAITaskConfig(taskType: AITaskType): Promise<AITaskConfi
     // Database might not be available or table doesn't exist yet
   }
 
-  // Return default config
+  // Return default config with default fallback chain
   const defaultConfig = DEFAULT_TASK_CONFIGS[taskType];
   return {
     taskType,
     provider: defaultConfig.provider,
     modelId: defaultConfig.modelId,
+    fallbackModels: DEFAULT_FALLBACK_CHAINS[taskType] || [],
     customApiUrl: null,
     customApiKeyRef: null,
     temperature: defaultConfig.temperature,
@@ -284,11 +321,15 @@ export async function getAllAITaskConfigs(): Promise<AITaskConfigData[]> {
 export async function saveAITaskConfig(config: Partial<AITaskConfigData> & { taskType: AITaskType }): Promise<void> {
   const existing = await getAITaskConfig(config.taskType);
 
+  // Convert fallbackModels to JSON-compatible format for Prisma
+  const fallbackModelsJson = (config.fallbackModels ?? existing.fallbackModels) as unknown as Prisma.InputJsonValue;
+
   await db.aITaskConfig.upsert({
     where: { taskType: config.taskType },
     update: {
       provider: config.provider ?? existing.provider,
       modelId: config.modelId ?? existing.modelId,
+      fallbackModels: fallbackModelsJson,
       customApiUrl: config.customApiUrl,
       customApiKeyRef: config.customApiKeyRef,
       temperature: config.temperature ?? existing.temperature,
@@ -299,6 +340,7 @@ export async function saveAITaskConfig(config: Partial<AITaskConfigData> & { tas
       taskType: config.taskType,
       provider: config.provider ?? existing.provider,
       modelId: config.modelId ?? existing.modelId,
+      fallbackModels: fallbackModelsJson,
       customApiUrl: config.customApiUrl,
       customApiKeyRef: config.customApiKeyRef,
       temperature: config.temperature ?? existing.temperature,

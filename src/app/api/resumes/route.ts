@@ -3,12 +3,14 @@ import { auth } from "@/lib/auth";
 import { db, withTransaction, safeDbOperation } from "@/lib/db";
 import { z } from "zod";
 import { isAdminEmail } from "@/lib/settings";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { handleApiError } from "@/lib/api-utils";
 
 const createResumeSchema = z.object({
   title: z.string().min(1).max(100),
   templateId: z.string().optional(),
-  region: z.enum(["US", "EU", "UA"]).default("US"),
+  region: z.enum(["US", "EU", "UA"]).default("US"), // @deprecated - kept for backwards compatibility
+  showPhoto: z.boolean().default(true), // User setting: whether to show photo in resume
   canvasData: z.any().optional(),
 });
 
@@ -84,14 +86,9 @@ export async function POST(req: Request) {
         where: { userId },
       });
 
-      const limits = {
-        FREE: 1,
-        PRO: 5,
-        PREMIUM: -1, // unlimited
-      };
-
       const plan = subscription?.plan || "FREE";
-      const limit = limits[plan];
+      const planLimits = await getPlanLimits(plan);
+      const limit = planLimits.maxResumes;
 
       if (limit !== -1 && resumeCount >= limit) {
         return NextResponse.json(
@@ -121,7 +118,8 @@ export async function POST(req: Request) {
             userId: userId,
             title: validatedData.title,
             templateId: validatedData.templateId,
-            region: validatedData.region,
+            region: validatedData.region, // @deprecated - kept for backwards compatibility
+            showPhoto: validatedData.showPhoto,
             canvasData: defaultCanvasData,
           },
         });

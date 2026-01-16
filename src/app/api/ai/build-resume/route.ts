@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db, withTransaction, safeDbOperation } from "@/lib/db";
-import { models, generateTextWithRetry } from "@/lib/ai/client";
+import { models, generateTextWithRetry, generateTextForTask } from "@/lib/ai/client";
 import { BUILD_RESUME_PROMPT, fillPromptTemplate } from "@/lib/ai/prompts";
-import { generateCanvasFromResume, generateCanvasFromBlueprint, generateCanvasFromZones, type BlueprintData, type ZoneLayoutData } from "@/lib/canvas/resume-to-canvas";
+import { generateCanvasFromResume, generateCanvasFromBlueprint, generateCanvasFromZones, replacePhotoPlaceholder, type BlueprintData, type ZoneLayoutData, type ExtractedPhotoData } from "@/lib/canvas/resume-to-canvas";
 import type { ParsedResume } from "@/lib/ai/resume-parser";
-import { PLANS } from "@/lib/constants";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { isAdminEmail } from "@/lib/settings";
 import { handleApiError } from "@/lib/api-utils";
+import { extractPhotoFromImage, extractPhotoFromPDF, detectPhotoIntent } from "@/lib/ai/photo-extractor";
 
 // Prompt for extracting ZONE-BASED layout from reference image
 // Instead of individual element coordinates, we identify ZONES and what sections go in each
@@ -147,8 +148,8 @@ export async function POST(req: Request) {
       });
 
       const plan = subscription?.plan || "FREE";
-      const planConfig = PLANS[plan];
-      const limit = planConfig.features.aiGenerations;
+      const planLimits = await getPlanLimits(plan);
+      const limit = planLimits.aiGenerations;
 
       if (limit !== -1) {
         const now = new Date();
@@ -183,7 +184,6 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const prompt = formData.get("prompt") as string;
     const style = (formData.get("style") as string) || "professional";
-    const region = (formData.get("region") as "US" | "EU" | "UA") || "US";
 
     // Get separate file arrays
     const resumeFiles = formData.getAll("resumeFiles") as File[];
@@ -200,6 +200,8 @@ export async function POST(req: Request) {
     let extractedText = "";
     // Analyze template file for style
     let imageStyleData: any = null;
+    // Extracted photo from resume
+    let extractedPhoto: ExtractedPhotoData | null = null;
 
     console.log(`[AI Builder] Processing ${resumeFiles.length} resume files, template: ${templateFile?.name || 'none'}`);
 
@@ -349,6 +351,37 @@ export async function POST(req: Request) {
       }
     }
 
+    // Try to extract photo from resume files (only if not already extracted)
+    if (!extractedPhoto) {
+      for (const file of resumeFiles) {
+        if (extractedPhoto) break; // Only extract first photo found
+
+        try {
+          if (file.type === "application/pdf") {
+            const arrayBuffer = await file.arrayBuffer();
+            console.log(`[AI Builder] Attempting photo extraction from PDF: ${file.name}`);
+            extractedPhoto = await extractPhotoFromPDF(arrayBuffer);
+            if (extractedPhoto) {
+              console.log(`[AI Builder] Photo extracted from PDF: ${file.name}`);
+            }
+          } else if (file.type.startsWith("image/")) {
+            const arrayBuffer = await file.arrayBuffer();
+            console.log(`[AI Builder] Attempting photo extraction from image: ${file.name}`);
+            extractedPhoto = await extractPhotoFromImage(Buffer.from(arrayBuffer), file.type);
+            if (extractedPhoto) {
+              console.log(`[AI Builder] Photo extracted from image: ${file.name}`);
+            }
+          }
+        } catch (err) {
+          console.warn(`[AI Builder] Photo extraction failed for ${file.name}:`, err);
+        }
+      }
+    }
+
+    // Determine if we should show photo (auto-detect based on inputs)
+    const wantsPhoto = detectPhotoIntent(prompt) || !!templateFile || !!extractedPhoto;
+    console.log(`[AI Builder] Photo intent: prompt=${detectPhotoIntent(prompt)}, template=${!!templateFile}, extracted=${!!extractedPhoto}, final=${wantsPhoto}`);
+
     // Process TEMPLATE FILE (style source) - extract style only
     if (templateFile && templateFile.type.startsWith("image/")) {
       try {
@@ -413,16 +446,22 @@ export async function POST(req: Request) {
       extractedText: extractedText || "No PDF content provided - generate example content based on user's description",
       styleReference,
       style,
-      region,
+      region: "US", // Default region for language purposes
     });
 
-    // Generate resume using AI
-    const { text: aiResponse } = await generateTextWithRetry({
-      model: await models.analysis(),
-      prompt: filledPrompt,
-      maxOutputTokens: 16000, // Increased for large resumes with many jobs
-      temperature: 0.3, // Lower temperature for more consistent structure
-    });
+    // Generate resume using AI with automatic fallback to alternative models
+    const { text: aiResponse, modelUsed, fallbacksAttempted } = await generateTextForTask(
+      "RESUME_GENERATION",
+      {
+        prompt: filledPrompt,
+        maxTokens: 16000, // Increased for large resumes with many jobs
+        temperature: 0.3, // Lower temperature for more consistent structure
+      }
+    );
+
+    if (fallbacksAttempted > 0) {
+      console.log(`[AI Builder] Used fallback model: ${modelUsed.provider}/${modelUsed.modelId} after ${fallbacksAttempted} failed attempts`);
+    }
 
     // Parse the AI response as JSON
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
@@ -489,7 +528,7 @@ export async function POST(req: Request) {
 
     // Generate canvas data from parsed resume
     // Priority: 1. Zone-based layout (new), 2. Blueprint (old), 3. Standard layout
-    const effectiveRegion = imageStyleData ? "US" : region; // US = English headers when using reference image
+    const effectiveRegion = "US"; // Default region for language purposes (showPhoto is separate setting)
 
     let canvasData;
     if (imageStyleData?.layout?.zones) {
@@ -517,7 +556,13 @@ export async function POST(req: Request) {
     } else {
       // Use standard layout generator
       console.log(`[AI Builder] Using standard layout generator`);
-      canvasData = generateCanvasFromResume(parsedResume, effectiveRegion, style);
+      canvasData = generateCanvasFromResume(parsedResume, effectiveRegion, style, wantsPhoto);
+    }
+
+    // Replace photo placeholder with extracted photo if available
+    if (extractedPhoto && wantsPhoto) {
+      console.log(`[AI Builder] Replacing photo placeholder with extracted photo`);
+      canvasData = replacePhotoPlaceholder(canvasData, extractedPhoto);
     }
 
     // Create resume in database
@@ -545,7 +590,8 @@ export async function POST(req: Request) {
             title: parsedResume.personalInfo.title
               ? `${parsedResume.personalInfo.fullName} - ${parsedResume.personalInfo.title}`
               : parsedResume.personalInfo.fullName,
-            region,
+            region: "US", // @deprecated - kept for backwards compatibility
+            showPhoto: wantsPhoto, // Auto-detected based on inputs
             profession: parsedResume.personalInfo.title || null,
             canvasData: JSON.parse(JSON.stringify(canvasDataWithMetadata)),
           },

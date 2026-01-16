@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -47,6 +48,7 @@ export function Header({ onMenuClick, showMenu = false }: HeaderProps) {
         </div>
 
         <nav className="flex items-center gap-2">
+          <LanguageSwitcher />
           {session ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

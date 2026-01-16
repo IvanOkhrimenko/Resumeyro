@@ -10,7 +10,8 @@ const updateResumeSchema = z.object({
   canvasData: z.any().optional().nullable(),
   structuredData: z.any().optional(),
   thumbnail: z.string().optional(),
-  region: z.enum(["US", "EU", "UA"]).optional(),
+  region: z.enum(["US", "EU", "UA"]).optional(), // @deprecated - kept for backwards compatibility
+  showPhoto: z.boolean().optional(), // User setting for photo visibility
   profession: z.string().optional(),
   isPublic: z.boolean().optional(),
   slug: z.string().optional(),

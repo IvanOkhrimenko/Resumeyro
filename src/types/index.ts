@@ -1,6 +1,10 @@
-import { ResumeRegion, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
+import { ResumeRegion, SubscriptionStatus } from "@prisma/client";
 
-export type { ResumeRegion, SubscriptionPlan, SubscriptionStatus };
+export type { ResumeRegion, SubscriptionStatus };
+
+// SubscriptionPlan is now a dynamic string (not an enum)
+// Valid plan keys are stored in SubscriptionPlanConfig table
+export type SubscriptionPlan = string;
 
 export interface ResumeData {
   personalInfo: {

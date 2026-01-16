@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations, useLocale } from "next-intl";
 import {
   Wand2,
   Upload,
@@ -22,19 +23,12 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type Style = "professional" | "creative" | "minimal";
-type Region = "US" | "EU" | "UA";
 type Step = "idle" | "analyzing" | "generating" | "formatting" | "complete" | "error";
 
 const styles: { id: Style; name: string; nameUk: string; icon: React.ElementType; description: string }[] = [
   { id: "professional", name: "Professional", nameUk: "Професійний", icon: Briefcase, description: "Formal, achievement-focused" },
   { id: "creative", name: "Creative", nameUk: "Креативний", icon: Palette, description: "Expressive, personality-driven" },
   { id: "minimal", name: "Minimal", nameUk: "Мінімальний", icon: Minus, description: "Concise, essential info only" },
-];
-
-const regions: { id: Region; name: string; flag: string }[] = [
-  { id: "US", name: "USA", flag: "🇺🇸" },
-  { id: "EU", name: "Europe", flag: "🇪🇺" },
-  { id: "UA", name: "Україна", flag: "🇺🇦" },
 ];
 
 const stepLabels: Record<Step, { en: string; uk: string }> = {
@@ -48,6 +42,8 @@ const stepLabels: Record<Step, { en: string; uk: string }> = {
 
 export default function AIBuilderPage() {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("aiBuilder");
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const templateInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,7 +51,6 @@ export default function AIBuilderPage() {
   const [resumeFiles, setResumeFiles] = useState<File[]>([]);
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<Style>("professional");
-  const [selectedRegion, setSelectedRegion] = useState<Region>("US");
   const [isDraggingResume, setIsDraggingResume] = useState(false);
   const [isDraggingTemplate, setIsDraggingTemplate] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>("idle");
@@ -190,11 +185,13 @@ export default function AIBuilderPage() {
     setCurrentStep("analyzing");
     setError(null);
 
+    // Store timeout IDs to clear them on error
+    const timeoutIds: NodeJS.Timeout[] = [];
+
     try {
       const formData = new FormData();
       formData.append("prompt", prompt);
       formData.append("style", selectedStyle);
-      formData.append("region", selectedRegion);
       // Send resume files (content source)
       resumeFiles.forEach((file) => formData.append("resumeFiles", file));
       // Send template file (style source)
@@ -202,9 +199,9 @@ export default function AIBuilderPage() {
         formData.append("templateFile", templateFile);
       }
 
-      // Simulate step progression
-      setTimeout(() => setCurrentStep("generating"), 1500);
-      setTimeout(() => setCurrentStep("formatting"), 4000);
+      // Simulate step progression (will be cleared on error)
+      timeoutIds.push(setTimeout(() => setCurrentStep("generating"), 1500));
+      timeoutIds.push(setTimeout(() => setCurrentStep("formatting"), 4000));
 
       const res = await fetch("/api/ai/build-resume", {
         method: "POST",
@@ -224,6 +221,8 @@ export default function AIBuilderPage() {
         router.push(`/resumes/${data.resumeId}/edit`);
       }, 1000);
     } catch (err) {
+      // Clear all pending step progression timeouts
+      timeoutIds.forEach(clearTimeout);
       setCurrentStep("error");
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
@@ -444,56 +443,28 @@ export default function AIBuilderPage() {
               </div>
             </div>
 
-            {/* Style & Region pickers */}
-            <div className="grid gap-5 sm:grid-cols-2">
-              {/* Style picker */}
-              <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-                <Label className="mb-3 block text-sm font-medium">
-                  Style <span className="text-zinc-400">/ Стиль</span>
-                </Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {styles.map((style) => (
-                    <button
-                      key={style.id}
-                      onClick={() => setSelectedStyle(style.id)}
-                      disabled={isProcessing}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all",
-                        selectedStyle === style.id
-                          ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
-                          : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                      )}
-                    >
-                      <style.icon className="h-4 w-4" />
-                      <span className="text-xs font-medium">{style.nameUk}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Region picker */}
-              <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-                <Label className="mb-3 block text-sm font-medium">
-                  Region <span className="text-zinc-400">/ Регіон</span>
-                </Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {regions.map((region) => (
-                    <button
-                      key={region.id}
-                      onClick={() => setSelectedRegion(region.id)}
-                      disabled={isProcessing}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all",
-                        selectedRegion === region.id
-                          ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30"
-                          : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                      )}
-                    >
-                      <span className="text-xl">{region.flag}</span>
-                      <span className="text-xs font-medium">{region.name}</span>
-                    </button>
-                  ))}
-                </div>
+            {/* Style picker */}
+            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+              <Label className="mb-3 block text-sm font-medium">
+                Style <span className="text-zinc-400">/ Стиль</span>
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                {styles.map((style) => (
+                  <button
+                    key={style.id}
+                    onClick={() => setSelectedStyle(style.id)}
+                    disabled={isProcessing}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all",
+                      selectedStyle === style.id
+                        ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                        : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+                    )}
+                  >
+                    <style.icon className="h-4 w-4" />
+                    <span className="text-xs font-medium">{locale === "uk" ? style.nameUk : style.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -507,12 +478,12 @@ export default function AIBuilderPage() {
               {isProcessing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating your resume...
+                  {t("creatingResume")}
                 </>
               ) : (
                 <>
                   <Wand2 className="h-4 w-4" />
-                  Build Resume
+                  {t("buildResume")}
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -523,7 +494,7 @@ export default function AIBuilderPage() {
           <div className="lg:col-span-2">
             <div className="sticky top-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
               <h3 className="mb-6 text-sm font-semibold uppercase tracking-wider text-zinc-400">
-                Progress / Прогрес
+                {t("progress")}
               </h3>
 
               {/* Progress steps */}
@@ -564,9 +535,8 @@ export default function AIBuilderPage() {
                             isComplete && "text-green-600 dark:text-green-400"
                           )}
                         >
-                          {stepLabels[step].en}
+                          {t(step)}
                         </p>
-                        <p className="text-xs text-zinc-400">{stepLabels[step].uk}</p>
                       </div>
                     </div>
                   );

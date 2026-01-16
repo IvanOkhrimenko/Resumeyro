@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { parseResumeWithAI, type ParsedResume } from "@/lib/ai/resume-parser";
-import { generateCanvasFromResume } from "@/lib/canvas/resume-to-canvas";
+import { generateCanvasFromResume, replacePhotoPlaceholder, type ExtractedPhotoData } from "@/lib/canvas/resume-to-canvas";
+import { extractPhotoFromPDF } from "@/lib/ai/photo-extractor";
 
 // POST /api/resumes/import - Import resume from file or URL
 export async function POST(req: Request) {
@@ -16,35 +17,78 @@ export async function POST(req: Request) {
     const type = formData.get("type") as string;
     const file = formData.get("file") as File | null;
     const linkedinUrl = formData.get("linkedinUrl") as string | null;
-    const region = (formData.get("region") as "US" | "EU" | "UA") || "US";
+    // Note: showPhoto is handled at resume creation time via /api/resumes
 
     let importedData: {
       title?: string;
       content?: Record<string, unknown>;
       structuredData?: ParsedResume;
+      hasExtractedPhoto?: boolean;
     } = {};
 
     if (type === "pdf" && file) {
       // Parse PDF file using unpdf (works in Node.js without DOM)
       const arrayBuffer = await file.arrayBuffer();
 
-      const { extractText } = await import("unpdf");
-      const { text: pdfText, totalPages } = await extractText(arrayBuffer, { mergePages: true });
+      let pdfText: string = "";
+      let totalPages: number = 0;
 
-      if (!pdfText || (pdfText as string).trim().length < 50) {
+      try {
+        const { extractText } = await import("unpdf");
+        const result = await extractText(arrayBuffer, { mergePages: true });
+        pdfText = (result.text as string) || "";
+        totalPages = result.totalPages || 1;
+      } catch (extractError) {
+        console.error("PDF extraction error:", extractError);
         return NextResponse.json(
-          { error: "Could not extract text from PDF. Please ensure it's not a scanned image." },
+          {
+            error: "Failed to read PDF file. The file may be corrupted or password-protected.",
+            details: extractError instanceof Error ? extractError.message : "Unknown error"
+          },
           { status: 400 }
         );
       }
 
-      const pdfData = { text: pdfText as string, numpages: totalPages };
+      // Check if we got meaningful text
+      const trimmedText = pdfText.trim();
+      if (trimmedText.length < 50) {
+        console.warn(`PDF text extraction returned only ${trimmedText.length} characters`);
+        return NextResponse.json(
+          {
+            error: "Could not extract text from PDF. This might be a scanned image or the PDF has no selectable text.",
+            hint: "Try uploading a PDF with selectable text, or create your resume from scratch."
+          },
+          { status: 400 }
+        );
+      }
+
+      console.log(`PDF parsed: ${totalPages} pages, ${trimmedText.length} characters extracted`);
+
+      const pdfData = { text: trimmedText, numpages: totalPages };
 
       // Use AI to parse the resume text
       const parsedResume = await parseResumeWithAI(pdfData.text);
 
-      // Generate canvas from parsed data
-      const canvasData = generateCanvasFromResume(parsedResume, region);
+      // Try to extract photo from PDF
+      let extractedPhoto: ExtractedPhotoData | null = null;
+      try {
+        console.log("[Import] Attempting photo extraction from PDF...");
+        extractedPhoto = await extractPhotoFromPDF(arrayBuffer);
+        if (extractedPhoto) {
+          console.log("[Import] Photo extracted successfully from PDF");
+        }
+      } catch (photoErr) {
+        console.warn("[Import] Photo extraction failed:", photoErr);
+      }
+
+      // Generate canvas from parsed data (region defaults to US for English section headers)
+      // Include photo placeholder only if photo was extracted
+      let canvasData = generateCanvasFromResume(parsedResume, "US", "professional", !!extractedPhoto);
+
+      // Replace placeholder with actual photo if extracted
+      if (extractedPhoto) {
+        canvasData = replacePhotoPlaceholder(canvasData, extractedPhoto);
+      }
 
       const fileName = file.name.replace(/\.pdf$/i, "");
 
@@ -57,9 +101,11 @@ export async function POST(req: Request) {
             originalFileName: file.name,
             importedAt: new Date().toISOString(),
             pdfPages: pdfData.numpages,
+            hasPhoto: !!extractedPhoto,
           },
         },
         structuredData: parsedResume,
+        hasExtractedPhoto: !!extractedPhoto,
       };
     } else if (type === "json" && file) {
       // Parse JSON file
@@ -71,7 +117,7 @@ export async function POST(req: Request) {
         // Check if it's structured resume data
         if (jsonData.personalInfo) {
           const parsedResume = jsonData as ParsedResume;
-          const canvasData = generateCanvasFromResume(parsedResume, region);
+          const canvasData = generateCanvasFromResume(parsedResume, "US");
 
           importedData = {
             title: parsedResume.personalInfo.fullName || "Imported Resume",

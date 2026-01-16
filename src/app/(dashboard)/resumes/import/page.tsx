@@ -10,7 +10,6 @@ import {
   FileText,
   FileJson,
   Linkedin,
-  Globe,
   CheckCircle2,
   AlertCircle,
   X,
@@ -28,32 +27,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-const regions = [
-  {
-    id: "US",
-    name: "United States",
-    flag: "🇺🇸",
-    description: "No photo, single column layout",
-  },
-  {
-    id: "EU",
-    name: "European Union",
-    flag: "🇪🇺",
-    description: "Europass style with photo",
-  },
-  {
-    id: "UA",
-    name: "Ukraine",
-    flag: "🇺🇦",
-    description: "Formal style with photo",
-  },
-];
-
 type ImportStep = "upload" | "processing" | "configure" | "error";
 
 interface ImportedData {
   title?: string;
   content?: Record<string, unknown>;
+}
+
+interface ImportError {
+  error: string;
+  hint?: string;
+  details?: string;
 }
 
 export default function ImportResumePage() {
@@ -66,9 +50,8 @@ export default function ImportResumePage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ImportError | null>(null);
   const [importedData, setImportedData] = useState<ImportedData | null>(null);
-  const [selectedRegion, setSelectedRegion] = useState<string>("US");
   const [isCreating, setIsCreating] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -96,7 +79,7 @@ export default function ImportResumePage() {
           setSelectedFile(file);
           setError(null);
         } else {
-          setError(`Please upload a ${expectedExt.toUpperCase()} file`);
+          setError({ error: `Please upload a ${expectedExt.toUpperCase()} file` });
         }
       }
     },
@@ -157,12 +140,16 @@ export default function ImportResumePage() {
         setTimeout(() => setStep("configure"), 500);
       } else {
         const errorData = await res.json();
-        setError(errorData.error || "Failed to import resume");
+        setError({
+          error: errorData.error || "Failed to import resume",
+          hint: errorData.hint,
+          details: errorData.details,
+        });
         setStep("error");
       }
     } catch (err) {
       clearInterval(progressInterval);
-      setError("Something went wrong during import");
+      setError({ error: "Something went wrong during import" });
       setStep("error");
     }
   };
@@ -177,7 +164,6 @@ export default function ImportResumePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: importedData.title || "Imported Resume",
-          region: selectedRegion,
           canvasData: importedData.content,
         }),
       });
@@ -186,12 +172,12 @@ export default function ImportResumePage() {
         const resume = await res.json();
         router.push(`/resumes/${resume.id}/edit`);
       } else {
-        const error = await res.json();
-        setError(error.error || "Failed to create resume");
+        const errData = await res.json();
+        setError({ error: errData.error || "Failed to create resume" });
         setStep("error");
       }
     } catch (err) {
-      setError("Something went wrong");
+      setError({ error: "Something went wrong" });
       setStep("error");
     } finally {
       setIsCreating(false);
@@ -309,9 +295,16 @@ export default function ImportResumePage() {
             </Tabs>
 
             {error && (
-              <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/50 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {error}
+              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {error.error}
+                </div>
+                {error.hint && (
+                  <p className="mt-1 ml-6 text-xs text-red-500 dark:text-red-400/80">
+                    {error.hint}
+                  </p>
+                )}
               </div>
             )}
 
@@ -398,34 +391,6 @@ export default function ImportResumePage() {
               </div>
             )}
 
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Globe className="h-4 w-4" />
-                Target Region
-              </Label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {regions.map((region) => (
-                  <button
-                    key={region.id}
-                    onClick={() => setSelectedRegion(region.id)}
-                    disabled={isCreating}
-                    className={cn(
-                      "flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all hover:border-zinc-400 dark:hover:border-zinc-600",
-                      selectedRegion === region.id
-                        ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800"
-                        : "border-zinc-200 dark:border-zinc-700"
-                    )}
-                  >
-                    <span className="text-2xl">{region.flag}</span>
-                    <span className="font-medium">{region.name}</span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {region.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="flex gap-3 pt-4">
               <Button
                 onClick={handleCreate}
@@ -457,9 +422,15 @@ export default function ImportResumePage() {
               <AlertCircle className="h-10 w-10 text-red-600 dark:text-red-400" />
             </div>
             <h2 className="mb-2 text-xl font-semibold">Import Failed</h2>
-            <p className="mb-6 text-center text-zinc-500 dark:text-zinc-400">
-              {error || "Something went wrong during the import process."}
+            <p className="mb-2 text-center text-zinc-600 dark:text-zinc-300">
+              {error?.error || "Something went wrong during the import process."}
             </p>
+            {error?.hint && (
+              <p className="mb-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                {error.hint}
+              </p>
+            )}
+            {!error?.hint && <div className="mb-4" />}
             <div className="flex gap-3">
               <Button onClick={resetImport}>Try Again</Button>
               <Button variant="outline" asChild>

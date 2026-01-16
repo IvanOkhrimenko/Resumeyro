@@ -1,16 +1,43 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Shield, ArrowLeft } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { BreadcrumbJsonLd } from "@/components/seo/json-ld";
+
+const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - Resumeyro",
-  description: "Privacy Policy for Resumeyro - AI-Powered Resume Builder. Learn how we collect, use, and protect your personal information.",
+  title: "Privacy Policy - Resumeyro | How We Protect Your Data",
+  description: "Privacy Policy for Resumeyro AI Resume Builder. Learn how we collect, use, and protect your personal information. GDPR and CCPA compliant.",
+  alternates: {
+    canonical: `${baseUrl}/privacy`,
+  },
+  openGraph: {
+    title: "Privacy Policy - Resumeyro",
+    description: "Learn how Resumeyro protects your personal information and resume data.",
+    url: `${baseUrl}/privacy`,
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
-export default function PrivacyPolicyPage() {
+export default async function PrivacyPolicyPage() {
+  const t = await getTranslations("privacy");
+  const tCommon = await getTranslations("common");
+  const tFooter = await getTranslations("footer");
   const lastUpdated = "January 15, 2025";
 
   return (
+    <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: "Home", url: baseUrl },
+          { name: "Privacy Policy", url: `${baseUrl}/privacy` },
+        ]}
+      />
     <div className="py-16 md:py-24">
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-3xl">
@@ -20,7 +47,7 @@ export default function PrivacyPolicyPage() {
             className="mb-8 inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to home
+            {tCommon("backToHome")}
           </Link>
 
           {/* Header */}
@@ -30,158 +57,158 @@ export default function PrivacyPolicyPage() {
                 <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Privacy Policy</h1>
-                <p className="text-sm text-zinc-500">Last updated: {lastUpdated}</p>
+                <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{t("title")}</h1>
+                <p className="text-sm text-zinc-500">{t("lastUpdated", { date: lastUpdated })}</p>
               </div>
             </div>
             <p className="text-lg text-zinc-600 dark:text-zinc-400">
-              Your privacy is important to us. This policy explains how Resumeyro collects, uses, and protects your personal information.
+              {t("intro")}
             </p>
           </div>
 
           {/* Content */}
           <div className="prose prose-zinc dark:prose-invert max-w-none">
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">1. Information We Collect</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section1Title")}</h2>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">1.1 Information You Provide</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section1_1Title")}</h3>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Account Information:</strong> Email address, name, and password when you create an account</li>
-                <li><strong>Resume Data:</strong> Work experience, education, skills, and other professional information you enter</li>
-                <li><strong>Uploaded Files:</strong> Resumes, photos, and documents you upload to our service</li>
-                <li><strong>Payment Information:</strong> Billing details processed securely through Stripe (we do not store credit card numbers)</li>
+                <li><strong>{t("section1_1_account")}</strong></li>
+                <li><strong>{t("section1_1_resume")}</strong></li>
+                <li><strong>{t("section1_1_files")}</strong></li>
+                <li><strong>{t("section1_1_payment")}</strong></li>
               </ul>
 
-              <h3 className="text-lg font-medium mt-6 mb-3">1.2 Information Collected Automatically</h3>
+              <h3 className="text-lg font-medium mt-6 mb-3">{t("section1_2Title")}</h3>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Usage Data:</strong> Pages visited, features used, and actions taken within the app</li>
-                <li><strong>Device Information:</strong> Browser type, operating system, and device identifiers</li>
-                <li><strong>Cookies:</strong> Session data and preferences (see Cookie section below)</li>
-              </ul>
-            </section>
-
-            <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">2. How We Use Your Information</h2>
-              <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Provide Services:</strong> Create and manage your resumes, process AI-powered features</li>
-                <li><strong>Improve the Product:</strong> Analyze usage patterns to enhance user experience</li>
-                <li><strong>Process Payments:</strong> Handle subscriptions and billing through Stripe</li>
-                <li><strong>Send Communications:</strong> Account notifications, security alerts, and optional marketing (with consent)</li>
-                <li><strong>Ensure Security:</strong> Detect and prevent fraud, abuse, and security threats</li>
+                <li><strong>{t("section1_2_usage")}</strong></li>
+                <li><strong>{t("section1_2_device")}</strong></li>
+                <li><strong>{t("section1_2_cookies")}</strong></li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">3. AI Processing</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section2Title")}</h2>
+              <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
+                <li><strong>{t("section2_provide")}</strong></li>
+                <li><strong>{t("section2_improve")}</strong></li>
+                <li><strong>{t("section2_payments")}</strong></li>
+                <li><strong>{t("section2_communications")}</strong></li>
+                <li><strong>{t("section2_security")}</strong></li>
+              </ul>
+            </section>
+
+            <section className="mb-10">
+              <h2 className="text-xl font-semibold mb-4">{t("section3Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                We use third-party AI providers (OpenAI, Anthropic, Google) to power our resume generation and review features:
+                {t("section3_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li>Your resume content is sent to AI providers for processing</li>
-                <li>AI providers may retain data according to their own privacy policies</li>
-                <li>We do not use your data to train AI models</li>
-                <li>You can request deletion of your data at any time</li>
+                <li>{t("section3_sent")}</li>
+                <li>{t("section3_retain")}</li>
+                <li>{t("section3_noTrain")}</li>
+                <li>{t("section3_deletion")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">4. Data Sharing</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section4Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                We do not sell your personal information. We share data only with:
+                {t("section4_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Service Providers:</strong> Stripe (payments), AI providers (content generation), hosting services</li>
-                <li><strong>Legal Requirements:</strong> When required by law or to protect our rights</li>
-                <li><strong>Business Transfers:</strong> In case of merger, acquisition, or sale of assets</li>
+                <li><strong>{t("section4_providers")}</strong></li>
+                <li><strong>{t("section4_legal")}</strong></li>
+                <li><strong>{t("section4_business")}</strong></li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">5. Data Security</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section5Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We implement industry-standard security measures including:
+                {t("section5_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400 mt-4">
-                <li>HTTPS encryption for all data transmission</li>
-                <li>Encrypted database storage</li>
-                <li>Regular security audits and updates</li>
-                <li>Access controls and authentication</li>
+                <li>{t("section5_https")}</li>
+                <li>{t("section5_encrypted")}</li>
+                <li>{t("section5_audits")}</li>
+                <li>{t("section5_access")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">6. Your Rights</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section6Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                Depending on your location (GDPR, CCPA), you have the right to:
+                {t("section6_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Access:</strong> Request a copy of your personal data</li>
-                <li><strong>Correction:</strong> Update or correct inaccurate information</li>
-                <li><strong>Deletion:</strong> Request deletion of your account and data</li>
-                <li><strong>Portability:</strong> Export your resume data</li>
-                <li><strong>Opt-out:</strong> Unsubscribe from marketing communications</li>
+                <li><strong>{t("section6_access")}</strong></li>
+                <li><strong>{t("section6_correction")}</strong></li>
+                <li><strong>{t("section6_deletion")}</strong></li>
+                <li><strong>{t("section6_portability")}</strong></li>
+                <li><strong>{t("section6_optout")}</strong></li>
               </ul>
               <p className="text-zinc-600 dark:text-zinc-400 mt-4">
-                To exercise these rights, contact us at <a href="mailto:privacy@resumeyro.com" className="text-blue-600 hover:underline dark:text-blue-400">privacy@resumeyro.com</a>
+                {t("section6_contact", { email: "privacy@resumeyro.com" })}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">7. Cookies</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section7Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400 mb-4">
-                We use cookies for:
+                {t("section7_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400">
-                <li><strong>Essential:</strong> Authentication, security, session management</li>
-                <li><strong>Preferences:</strong> Language settings, theme preferences</li>
-                <li><strong>Analytics:</strong> Understanding how users interact with our service (optional)</li>
+                <li><strong>{t("section7_essential")}</strong></li>
+                <li><strong>{t("section7_preferences")}</strong></li>
+                <li><strong>{t("section7_analytics")}</strong></li>
               </ul>
               <p className="text-zinc-600 dark:text-zinc-400 mt-4">
-                You can control cookies through your browser settings.
+                {t("section7_control")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">8. Data Retention</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section8Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We retain your data for as long as your account is active. After account deletion:
+                {t("section8_intro")}
               </p>
               <ul className="list-disc pl-6 space-y-2 text-zinc-600 dark:text-zinc-400 mt-4">
-                <li>Personal data is deleted within 30 days</li>
-                <li>Backups are purged within 90 days</li>
-                <li>Some data may be retained for legal compliance</li>
+                <li>{t("section8_30days")}</li>
+                <li>{t("section8_90days")}</li>
+                <li>{t("section8_legal")}</li>
               </ul>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">9. International Transfers</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section9Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Your data may be processed in countries outside your residence. We ensure appropriate safeguards are in place, including Standard Contractual Clauses where required.
+                {t("section9_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">10. Children's Privacy</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section10Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                Our service is not intended for users under 16 years old. We do not knowingly collect data from children.
+                {t("section10_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">11. Changes to This Policy</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section11Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                We may update this policy periodically. We will notify you of significant changes via email or in-app notification.
+                {t("section11_text")}
               </p>
             </section>
 
             <section className="mb-10">
-              <h2 className="text-xl font-semibold mb-4">12. Contact Us</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("section12Title")}</h2>
               <p className="text-zinc-600 dark:text-zinc-400">
-                For privacy-related questions or concerns:
+                {t("section12_text")}
               </p>
               <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p className="text-zinc-900 dark:text-zinc-100 font-medium">Resumeyro</p>
-                <p className="text-zinc-600 dark:text-zinc-400">Email: <a href="mailto:privacy@resumeyro.com" className="text-blue-600 hover:underline dark:text-blue-400">privacy@resumeyro.com</a></p>
+                <p className="text-zinc-600 dark:text-zinc-400">{t("contactEmail", { email: "privacy@resumeyro.com" })}</p>
               </div>
             </section>
           </div>
@@ -189,15 +216,16 @@ export default function PrivacyPolicyPage() {
           {/* Footer links */}
           <div className="mt-12 flex flex-wrap gap-4 border-t border-zinc-200 pt-8 dark:border-zinc-800">
             <Link href="/terms" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-              Terms of Service
+              {tFooter("termsOfService")}
             </Link>
             <span className="text-zinc-300 dark:text-zinc-700">|</span>
             <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-              Back to Resumeyro
+              {tCommon("backToHome")}
             </Link>
           </div>
         </div>
       </div>
     </div>
+    </>
   );
 }

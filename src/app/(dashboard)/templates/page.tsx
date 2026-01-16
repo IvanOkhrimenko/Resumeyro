@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, Globe, Sparkles, Filter } from "lucide-react";
+import { Loader2, Lock, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -14,18 +14,10 @@ interface Template {
   nameUk: string;
   description: string;
   descriptionUk: string;
-  region: "US" | "EU" | "UA" | "INTL";
   category: string;
   isPremium: boolean;
   thumbnail: string;
 }
-
-const regionLabels = {
-  US: { name: "United States", flag: "🇺🇸" },
-  EU: { name: "European Union", flag: "🇪🇺" },
-  UA: { name: "Ukraine", flag: "🇺🇦" },
-  INTL: { name: "International", flag: "🌍" },
-};
 
 const categoryLabels: Record<string, string> = {
   professional: "Professional",
@@ -40,19 +32,17 @@ export default function TemplatesPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchTemplates();
-  }, [selectedRegion, selectedCategory]);
+  }, [selectedCategory]);
 
   async function fetchTemplates() {
     try {
       const params = new URLSearchParams();
-      if (selectedRegion) params.set("region", selectedRegion);
       if (selectedCategory) params.set("category", selectedCategory);
 
       const url = params.toString()
@@ -86,16 +76,13 @@ export default function TemplatesPage() {
 
       const template = await templateRes.json();
 
-      // Map INTL region to US (INTL is for display only, DB accepts US/EU/UA)
-      const dbRegion = template.region === "INTL" ? "US" : template.region;
-
       // Create new resume from template
       const res = await fetch("/api/resumes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `${template.name} Resume`,
-          region: dbRegion,
+          showPhoto: true, // Default to showing photo; user can toggle in editor
           canvasData: template.canvasData,
         }),
       });
@@ -131,56 +118,29 @@ export default function TemplatesPage() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="space-y-3">
-        {/* Region filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400 w-16">Region:</span>
-          <Button
-            variant={selectedRegion === null ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedRegion(null)}
-          >
-            <Globe className="mr-2 h-4 w-4" />
-            All
-          </Button>
-          {(["US", "EU", "UA"] as const).map((region) => (
+      {/* Style filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Style:</span>
+        <Button
+          variant={selectedCategory === null ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSelectedCategory(null)}
+        >
+          <Filter className="mr-2 h-4 w-4" />
+          All
+        </Button>
+        {(Object.keys(categoryLabels) as Array<keyof typeof categoryLabels>).map(
+          (category) => (
             <Button
-              key={region}
-              variant={selectedRegion === region ? "default" : "outline"}
+              key={category}
+              variant={selectedCategory === category ? "default" : "outline"}
               size="sm"
-              onClick={() => setSelectedRegion(region)}
+              onClick={() => setSelectedCategory(category)}
             >
-              <span className="mr-2">{regionLabels[region].flag}</span>
-              {regionLabels[region].name}
+              {categoryLabels[category]}
             </Button>
-          ))}
-        </div>
-
-        {/* Category filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400 w-16">Style:</span>
-          <Button
-            variant={selectedCategory === null ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedCategory(null)}
-          >
-            <Filter className="mr-2 h-4 w-4" />
-            All
-          </Button>
-          {(Object.keys(categoryLabels) as Array<keyof typeof categoryLabels>).map(
-            (category) => (
-              <Button
-                key={category}
-                variant={selectedCategory === category ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory(category)}
-              >
-                {categoryLabels[category]}
-              </Button>
-            )
-          )}
-        </div>
+          )
+        )}
       </div>
 
       {/* Templates grid */}
@@ -212,9 +172,7 @@ export default function TemplatesPage() {
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <div className="mb-2 text-4xl">
-                      {regionLabels[template.region].flag}
-                    </div>
+                    <div className="mb-2 text-4xl">📄</div>
                     <p className="text-sm text-zinc-500">{template.name}</p>
                   </div>
                 </div>
@@ -239,10 +197,7 @@ export default function TemplatesPage() {
             </div>
 
             <CardContent className="p-4">
-              <div className="mb-1 flex items-center justify-between">
-                <h3 className="font-medium">{template.name}</h3>
-                <span className="text-sm">{regionLabels[template.region].flag}</span>
-              </div>
+              <h3 className="mb-1 font-medium">{template.name}</h3>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 {template.description}
               </p>
@@ -258,7 +213,7 @@ export default function TemplatesPage() {
 
       {templates.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-zinc-500">No templates found for this region</p>
+          <p className="text-zinc-500">No templates found for this style</p>
         </div>
       )}
     </div>

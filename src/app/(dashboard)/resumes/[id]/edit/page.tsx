@@ -32,8 +32,15 @@ interface Resume {
   id: string;
   title: string;
   canvasData: any;
-  region: string;
   profession: string | null;
+}
+
+interface SubscriptionLimits {
+  maxResumes: number;
+  aiGenerations: number;
+  aiReviews: number;
+  multiModelReview: boolean;
+  pdfWatermark: boolean;
 }
 
 export default function ResumeEditPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,12 +53,26 @@ export default function ResumeEditPage({ params }: { params: Promise<{ id: strin
   const [error, setError] = useState<string | null>(null);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [subscriptionLimits, setSubscriptionLimits] = useState<SubscriptionLimits | null>(null);
   const { canvas, markClean, triggerAIAssistant } = useCanvasStore();
   const { toast } = useToast();
 
   useEffect(() => {
     fetchResume();
+    fetchSubscription();
   }, [id]);
+
+  async function fetchSubscription() {
+    try {
+      const res = await fetch("/api/subscription");
+      if (res.ok) {
+        const data = await res.json();
+        setSubscriptionLimits(data.limits);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch subscription:", err);
+    }
+  }
 
   async function fetchResume() {
     try {
@@ -142,10 +163,14 @@ export default function ResumeEditPage({ params }: { params: Promise<{ id: strin
 
     setIsExporting(true);
     try {
+      // Add watermark based on subscription plan (pdfWatermark: true means user has watermark)
+      const addWatermark = subscriptionLimits?.pdfWatermark ?? true;
+
       await downloadPDF(canvas, {
         filename: title || "resume",
         format: "a4",
         quality: 1,
+        addWatermark,
       });
       toast.success("PDF exported successfully");
     } catch (err) {

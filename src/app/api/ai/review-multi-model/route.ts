@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { generateText } from "ai";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getMultiModelReviewConfig, getProviderApiKey, isAdminEmail } from "@/lib/settings";
-import { PLANS } from "@/lib/constants";
+import { getMultiModelReviewConfig, getProviderApiKey, isAdmin as checkIsAdmin } from "@/lib/settings";
+import { getPlanLimits } from "@/lib/subscription-plans";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -319,23 +319,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const isAdmin = isAdminEmail(session.user.email);
+    const isAdmin = await checkIsAdmin(session.user.id);
 
     // Check subscription for multi-model review access
-    if (!isAdmin) {
-      const subscription = await db.subscription.findUnique({
-        where: { userId: session.user.id },
-      });
+    const subscription = await db.subscription.findUnique({
+      where: { userId: session.user.id },
+    });
 
-      const plan = subscription?.plan || "FREE";
-      const planConfig = PLANS[plan as keyof typeof PLANS];
+    const plan = subscription?.plan || "FREE";
+    const planLimits = await getPlanLimits(plan, isAdmin);
 
-      if (!planConfig.features.multiModelReview) {
-        return NextResponse.json(
-          { error: "Multi-model review is only available on Premium plan" },
-          { status: 403 }
-        );
-      }
+    if (!planLimits.multiModelReview) {
+      return NextResponse.json(
+        { error: "Multi-model review is only available on Premium plan" },
+        { status: 403 }
+      );
     }
 
     // Get multi-model configuration

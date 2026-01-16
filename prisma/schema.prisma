@@ -87,7 +87,8 @@ model Resume {
   thumbnail      String?      @db.Text
 
   templateId     String?
-  region         ResumeRegion @default(US)
+  region         ResumeRegion @default(US) // @deprecated - kept for backwards compatibility
+  showPhoto      Boolean      @default(true) // User setting: whether to show photo in resume
   profession     String?
 
   isPublic       Boolean      @default(false)
@@ -164,6 +165,10 @@ model AITaskConfig {
   provider    String      // openai, anthropic, google, custom
   modelId     String      // claude-sonnet-4-20250514, gpt-4o, etc.
 
+  // Fallback models - automatic failover chain
+  // Format: [{ "provider": "openai", "modelId": "gpt-4o" }, ...]
+  fallbackModels  Json      @default("[]")
+
   // For custom providers
   customApiUrl    String?
   customApiKeyRef String?  // Reference to SystemSetting key for API key
@@ -237,12 +242,16 @@ model Subscription {
   stripeSubscriptionId String?            @unique
   stripePriceId        String?
 
-  plan                 SubscriptionPlan   @default(FREE)
+  // Changed from enum to String to support dynamic plans
+  plan                 String             @default("FREE")
   status               SubscriptionStatus @default(ACTIVE)
 
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
   cancelAtPeriodEnd    Boolean            @default(false)
+
+  // Track if subscription was granted by admin (no revenue, only costs)
+  grantedByAdmin       Boolean            @default(false)
 
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
@@ -252,10 +261,49 @@ model Subscription {
   @@index([stripeCustomerId])
 }
 
-enum SubscriptionPlan {
-  FREE
-  PRO
-  PREMIUM
+// Dynamic subscription plan configuration (admin-configurable)
+model SubscriptionPlanConfig {
+  id                    String   @id @default(cuid())
+  key                   String   @unique  // FREE, PRO, PREMIUM, BUSINESS, etc.
+  name                  String             // Display name
+  nameUk                String?            // Ukrainian name
+  description           String?
+  descriptionUk         String?
+
+  // Pricing
+  priceMonthly          Float    @default(0)
+  priceYearly           Float    @default(0)
+  currency              String   @default("USD")
+  stripePriceIdMonthly  String?
+  stripePriceIdYearly   String?
+
+  // Limits (-1 = unlimited)
+  maxResumes            Int      @default(1)
+  aiGenerationsPerMonth Int      @default(3)
+  aiReviewsPerMonth     Int      @default(0)
+
+  // Feature toggles
+  multiModelReview      Boolean  @default(false)
+  pdfWatermark          Boolean  @default(true)
+  prioritySupport       Boolean  @default(false)
+
+  // AI Model restrictions (JSON array of allowed model IDs, empty = none allowed)
+  // Format: ["claude-sonnet-4-20250514", "gpt-4o-mini", ...]
+  allowedModels         Json     @default("[]")
+
+  // Per-task model overrides (JSON object: {taskType: {provider, modelId}})
+  // Example: {"RESUME_REVIEW": {"provider": "anthropic", "modelId": "claude-3-5-haiku"}}
+  taskModelOverrides    Json     @default("{}")
+
+  // Metadata
+  isActive              Boolean  @default(true)
+  sortOrder             Int      @default(0)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([key])
+  @@index([isActive])
 }
 
 enum SubscriptionStatus {

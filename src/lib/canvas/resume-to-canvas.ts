@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import type { ParsedResume, ResumeStylePreset, DynamicLayout, SectionLayout, SectionPosition } from "@/lib/ai/resume-parser";
+import { ICON_PATHS, type IconName } from "./icons";
 
 // A4 dimensions at 96 DPI
 const A4_WIDTH = 595;
@@ -446,6 +447,68 @@ function createRectObject(
   };
 }
 
+/**
+ * Create an SVG path icon object
+ * Icons are defined in 24x24 viewbox, scaled to desired size
+ */
+function createIconObject(
+  iconName: IconName,
+  left: number,
+  top: number,
+  size: number,
+  color: string
+): CanvasObject {
+  const pathData = ICON_PATHS[iconName];
+  const scale = size / 24; // Icons are 24x24 base
+
+  return {
+    id: createId(),
+    type: "path",
+    path: pathData,
+    left,
+    top,
+    fill: color,
+    scaleX: scale,
+    scaleY: scale,
+    originX: "left",
+    originY: "top",
+    selectable: true,
+    evented: true,
+  };
+}
+
+/**
+ * Create icon + text pair for contact info
+ * Returns array of [iconObject, textObject] positioned inline
+ */
+function createIconTextPair(
+  iconName: IconName,
+  text: string,
+  left: number,
+  top: number,
+  iconSize: number,
+  styles: ResumeStylePreset,
+  textOptions: {
+    fontSize?: number;
+    fill?: string;
+    fontFamily?: string;
+    semanticType?: SemanticType;
+  } = {}
+): CanvasObject[] {
+  const iconColor = textOptions.fill || styles.colors.secondary;
+  const gap = 4; // Gap between icon and text
+
+  const iconObj = createIconObject(iconName, left, top + 1, iconSize, iconColor);
+  const textObj = createTextObject(text, left + iconSize + gap, top, styles, {
+    fontSize: textOptions.fontSize || styles.fontSizes.small,
+    fill: textOptions.fill || styles.colors.secondary,
+    fontFamily: textOptions.fontFamily,
+    semanticType: textOptions.semanticType,
+  });
+
+  return [iconObj, textObj];
+}
+
 // Create photo placeholder for EU/UA regions
 function createPhotoPlaceholder(
   left: number,
@@ -482,15 +545,16 @@ function createPhotoPlaceholder(
 
 export function generateCanvasFromResume(
   resume: ParsedResume,
-  region: "US" | "EU" | "UA" = "US",
-  stylePreset: string = "professional"
+  region: "US" | "EU" | "UA" = "US", // @deprecated - kept for section header language only
+  stylePreset: string = "professional",
+  showPhoto: boolean = true // Always generate photo placeholder for flexibility
 ): CanvasData {
   // Get merged styles (AI-provided + defaults)
   const styles = getStyles(resume, stylePreset);
   const layoutType = styles.layoutType || "single-column";
   const headers = SECTION_HEADERS[region];
 
-  console.log(`[Canvas] Generating layout: ${layoutType}, region: ${region}`);
+  console.log(`[Canvas] Generating layout: ${layoutType}, showPhoto: ${showPhoto}`);
   console.log(`[Canvas] Has dynamicLayout:`, !!styles.dynamicLayout);
 
   // Check for dynamic layout first (reference image was provided)
@@ -503,15 +567,15 @@ export function generateCanvasFromResume(
   switch (layoutType) {
     case "sidebar-left":
     case "two-column-left": // Legacy alias
-      return generateSidebarLeftLayout(resume, styles, region, headers);
+      return generateSidebarLeftLayout(resume, styles, showPhoto, headers);
     case "sidebar-right":
     case "two-column-right": // Legacy alias
-      return generateSidebarRightLayout(resume, styles, region, headers);
+      return generateSidebarRightLayout(resume, styles, showPhoto, headers);
     case "header-two-column":
-      return generateHeaderTwoColumnLayout(resume, styles, region, headers);
+      return generateHeaderTwoColumnLayout(resume, styles, showPhoto, headers);
     case "single-column":
     default:
-      return generateSingleColumnLayout(resume, styles, region, headers);
+      return generateSingleColumnLayout(resume, styles, showPhoto, headers);
   }
 }
 
@@ -519,12 +583,11 @@ export function generateCanvasFromResume(
 function generateSingleColumnLayout(
   resume: ParsedResume,
   styles: ResumeStylePreset,
-  region: Region,
+  showPhoto: boolean,
   headers: typeof SECTION_HEADERS["US"]
 ): CanvasData {
   const objects: CanvasObject[] = [];
   let y = 0;
-  const showPhoto = region !== "US";
 
   // === HEADER SECTION ===
   if (styles.layout.headerHeight > 0) {
@@ -802,7 +865,7 @@ function generateSingleColumnLayout(
 function generateSidebarLeftLayout(
   resume: ParsedResume,
   styles: ResumeStylePreset,
-  region: Region,
+  showPhoto: boolean,
   headers: typeof SECTION_HEADERS["US"]
 ): CanvasData {
   const objects: CanvasObject[] = [];
@@ -1109,11 +1172,11 @@ function generateSidebarLeftLayout(
 function generateSidebarRightLayout(
   resume: ParsedResume,
   styles: ResumeStylePreset,
-  region: Region,
+  showPhoto: boolean,
   headers: typeof SECTION_HEADERS["US"]
 ): CanvasData {
   // Mirror of sidebar-left
-  return generateSidebarLeftLayout(resume, styles, region, headers);
+  return generateSidebarLeftLayout(resume, styles, showPhoto, headers);
 }
 
 // Classic two-column layout with header at top (Sophie Wright style)
@@ -1121,7 +1184,7 @@ function generateSidebarRightLayout(
 function generateHeaderTwoColumnLayout(
   resume: ParsedResume,
   styles: ResumeStylePreset,
-  region: Region,
+  showPhoto: boolean,
   headers: typeof SECTION_HEADERS["US"]
 ): CanvasData {
   const objects: CanvasObject[] = [];
@@ -1175,21 +1238,51 @@ function generateHeaderTwoColumnLayout(
     })
   );
 
-  // Title + Location + Phone with icons below name
+  // Title + Location + Phone with SVG icons below name
   const contactY = headerY + 10 + (styles.fontSizes.name || 26) + 8;
-  const contactParts: string[] = [];
-  if (resume.personalInfo.title) contactParts.push(resume.personalInfo.title);
-  if (resume.personalInfo.location) contactParts.push(`📍 ${resume.personalInfo.location}`);
-  if (resume.personalInfo.phone) contactParts.push(`📞 ${resume.personalInfo.phone}`);
+  const iconSize = 12;
+  const contactGap = 20; // Gap between contact items
+  let contactX = nameX;
 
-  if (contactParts.length > 0) {
+  // Title (no icon)
+  if (resume.personalInfo.title) {
     objects.push(
-      createTextObject(contactParts.join("     "), nameX, contactY, styles, {
+      createTextObject(resume.personalInfo.title, contactX, contactY, styles, {
         fontSize: styles.fontSizes.small,
         fill: styles.colors.secondary,
         fontFamily: styles.fonts.body,
-        width: A4_WIDTH - nameX - MARGIN,
         semanticType: "contact_info",
+      })
+    );
+    // Estimate text width (approximate: 6px per character for small font)
+    contactX += resume.personalInfo.title.length * 6 + contactGap;
+  }
+
+  // Location with icon
+  if (resume.personalInfo.location) {
+    objects.push(createIconObject("location", contactX, contactY + 1, iconSize, styles.colors.secondary));
+    contactX += iconSize + 4;
+    objects.push(
+      createTextObject(resume.personalInfo.location, contactX, contactY, styles, {
+        fontSize: styles.fontSizes.small,
+        fill: styles.colors.secondary,
+        fontFamily: styles.fonts.body,
+        semanticType: "location",
+      })
+    );
+    contactX += resume.personalInfo.location.length * 5.5 + contactGap;
+  }
+
+  // Phone with icon
+  if (resume.personalInfo.phone) {
+    objects.push(createIconObject("phone", contactX, contactY + 1, iconSize, styles.colors.secondary));
+    contactX += iconSize + 4;
+    objects.push(
+      createTextObject(resume.personalInfo.phone, contactX, contactY, styles, {
+        fontSize: styles.fontSizes.small,
+        fill: styles.colors.secondary,
+        fontFamily: styles.fonts.body,
+        semanticType: "phone",
       })
     );
   }
@@ -1607,48 +1700,67 @@ function generateDynamicLayout(
 
       case "contact": {
         const withIcons = section.style?.withIcons;
-        const contactItems: string[] = [];
+        const iconSize = 11;
+        const iconGap = 4;
 
-        if (resume.personalInfo.location) {
-          contactItems.push(withIcons ? `📍 ${resume.personalInfo.location}` : resume.personalInfo.location);
-        }
-        if (resume.personalInfo.phone) {
-          contactItems.push(withIcons ? `📞 ${resume.personalInfo.phone}` : resume.personalInfo.phone);
-        }
-        if (resume.personalInfo.email) {
-          contactItems.push(withIcons ? `✉️ ${resume.personalInfo.email}` : resume.personalInfo.email);
-        }
-
-        // For header positions, display inline
+        // For header positions, display inline with SVG icons
         if (section.position.startsWith("header")) {
-          if (contactItems.length > 0) {
-            const contactObj = createTextObject(contactItems.join("     "), x, y, styles, {
-              fontSize: styles.fontSizes.small,
-              fill: styles.colors.secondary,
-              width,
-              semanticType: "contact_info",
-            });
-            if (isCentered) {
-              contactObj.textAlign = "center";
+          let localX = x;
+          const contactItemsData = [
+            { icon: "location" as IconName, value: resume.personalInfo.location },
+            { icon: "phone" as IconName, value: resume.personalInfo.phone },
+            { icon: "email" as IconName, value: resume.personalInfo.email },
+          ].filter(item => item.value);
+
+          for (let i = 0; i < contactItemsData.length; i++) {
+            const item = contactItemsData[i];
+            if (withIcons) {
+              objects.push(createIconObject(item.icon, localX, y + 1, iconSize, styles.colors.secondary));
+              localX += iconSize + iconGap;
             }
-            objects.push(contactObj);
-            heightAdded = styles.fontSizes.small + 12;
-          }
-        } else {
-          // For column positions, display vertically
-          let localY = y;
-          for (const item of contactItems) {
             objects.push(
-              createTextObject(item, x, localY, styles, {
+              createTextObject(item.value!, localX, y, styles, {
                 fontSize: styles.fontSizes.small,
-                fill: textColor,
-                width,
+                fill: styles.colors.secondary,
                 semanticType: "contact_info",
               })
             );
+            localX += (item.value!.length * 5.5) + 20;
+          }
+          heightAdded = styles.fontSizes.small + 12;
+        } else {
+          // For column positions, display vertically with SVG icons
+          let localY = y;
+          const contactItemsData = [
+            { icon: "location" as IconName, value: resume.personalInfo.location, type: "location" },
+            { icon: "phone" as IconName, value: resume.personalInfo.phone, type: "phone" },
+            { icon: "email" as IconName, value: resume.personalInfo.email, type: "email" },
+          ].filter(item => item.value);
+
+          for (const item of contactItemsData) {
+            if (withIcons) {
+              objects.push(createIconObject(item.icon, x, localY + 1, iconSize, textColor));
+              objects.push(
+                createTextObject(item.value!, x + iconSize + iconGap, localY, styles, {
+                  fontSize: styles.fontSizes.small,
+                  fill: textColor,
+                  width: width - iconSize - iconGap,
+                  semanticType: item.type as any,
+                })
+              );
+            } else {
+              objects.push(
+                createTextObject(item.value!, x, localY, styles, {
+                  fontSize: styles.fontSizes.small,
+                  fill: textColor,
+                  width,
+                  semanticType: item.type as any,
+                })
+              );
+            }
             localY += 16;
           }
-          heightAdded = contactItems.length * 16 + 10;
+          heightAdded = contactItemsData.length * 16 + 10;
         }
         break;
       }
@@ -3461,4 +3573,138 @@ function renderZoneContent(
       }
     }
   }
+}
+
+/**
+ * Photo data from automatic extraction
+ */
+export interface ExtractedPhotoData {
+  photoDataUrl: string;
+  shape: "circle" | "rounded" | "square";
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Replace photo placeholder elements with real photo images
+ *
+ * This function finds placeholder elements (rectangles with 📷 emoji text)
+ * and replaces them with actual image objects.
+ *
+ * @param canvasData - The generated canvas data
+ * @param photoData - The extracted photo data with dataUrl
+ * @returns Updated canvas data with real photo
+ */
+export function replacePhotoPlaceholder(
+  canvasData: CanvasData,
+  photoData: ExtractedPhotoData
+): CanvasData {
+  if (!photoData?.photoDataUrl) {
+    return canvasData;
+  }
+
+  const objects = [...canvasData.objects];
+  let photoPlaceholderFound = false;
+  let placeholderRect: CanvasObject | null = null;
+  let placeholderTextIndex = -1;
+
+  // Find the photo placeholder (rect + emoji text)
+  for (let i = 0; i < objects.length; i++) {
+    const obj = objects[i];
+
+    // Find emoji text that represents photo placeholder
+    if (
+      obj.type === "textbox" &&
+      typeof obj.text === "string" &&
+      (obj.text.includes("📷") || obj.text.includes("👤"))
+    ) {
+      placeholderTextIndex = i;
+
+      // Find the corresponding rectangle (should be near this text)
+      for (let j = 0; j < objects.length; j++) {
+        const potentialRect = objects[j];
+        if (
+          potentialRect.type === "rect" &&
+          Math.abs((potentialRect.left as number) - (obj.left as number)) < 50 &&
+          Math.abs((potentialRect.top as number) - (obj.top as number)) < 50
+        ) {
+          placeholderRect = potentialRect;
+          photoPlaceholderFound = true;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  if (!photoPlaceholderFound || !placeholderRect) {
+    console.log("[Canvas] No photo placeholder found to replace");
+    return canvasData;
+  }
+
+  // Get placeholder dimensions
+  const photoLeft = placeholderRect.left as number;
+  const photoTop = placeholderRect.top as number;
+  const photoWidth = (placeholderRect.width as number) || 80;
+  const photoHeight = (placeholderRect.height as number) || photoWidth;
+
+  // Create the image object
+  const photoObject: CanvasObject = {
+    id: createId(),
+    type: "image",
+    left: photoLeft,
+    top: photoTop,
+    width: photoWidth,
+    height: photoHeight,
+    scaleX: 1,
+    scaleY: 1,
+    src: photoData.photoDataUrl,
+    originX: "left",
+    originY: "top",
+    selectable: true,
+    semanticType: "photo",
+  };
+
+  // Apply shape-specific clipping
+  if (photoData.shape === "circle") {
+    photoObject.clipPath = {
+      type: "circle",
+      radius: Math.min(photoWidth, photoHeight) / 2,
+      left: 0,
+      top: 0,
+      originX: "center",
+      originY: "center",
+    };
+  } else if (photoData.shape === "rounded") {
+    photoObject.clipPath = {
+      type: "rect",
+      width: photoWidth,
+      height: photoHeight,
+      rx: 10,
+      ry: 10,
+      left: -photoWidth / 2,
+      top: -photoHeight / 2,
+      originX: "center",
+      originY: "center",
+    };
+  }
+
+  // Remove placeholder objects and add photo
+  const newObjects = objects.filter((_, idx) => {
+    // Remove placeholder text
+    if (idx === placeholderTextIndex) return false;
+    // Remove placeholder rect
+    if (placeholderRect && objects[idx].id === placeholderRect.id) return false;
+    return true;
+  });
+
+  // Add the actual photo image
+  newObjects.push(photoObject);
+
+  console.log(`[Canvas] Replaced photo placeholder with real image (${photoData.shape} shape)`);
+
+  return {
+    ...canvasData,
+    objects: newObjects,
+  };
 }

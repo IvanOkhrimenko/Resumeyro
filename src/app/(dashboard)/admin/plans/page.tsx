@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations, useLocale } from "next-intl";
 import {
   CreditCard,
   Loader2,
@@ -76,6 +77,8 @@ const tierColors: Record<string, string> = {
 };
 
 export default function PlansPage() {
+  const t = useTranslations("adminPlans");
+  const locale = useLocale();
   const [plans, setPlans] = useState<PlanConfig[]>([]);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,6 +94,11 @@ export default function PlansPage() {
     priceMonthly: 0,
   });
 
+  // Helper to get localized plan name
+  const getPlanName = (plan: PlanConfig) => {
+    return locale === "uk" && plan.nameUk ? plan.nameUk : plan.name;
+  };
+
   useEffect(() => {
     fetchPlans();
   }, []);
@@ -104,7 +112,7 @@ export default function PlansPage() {
     try {
       const res = await fetch("/api/admin/plans");
       if (res.status === 403) {
-        setError("Admin access required");
+        setError(t("adminRequired"));
         return;
       }
       if (!res.ok) throw new Error("Failed to fetch");
@@ -112,7 +120,7 @@ export default function PlansPage() {
       setPlans(data.plans || []);
       setAvailableModels(data.availableModels || []);
     } catch {
-      setError("Failed to load plans");
+      setError(t("failedToLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -127,10 +135,10 @@ export default function PlansPage() {
         body: JSON.stringify(plan),
       });
       if (!res.ok) throw new Error("Failed to save");
-      showSuccess(`${plan.name} updated`);
+      showSuccess(t("planUpdated", { plan: getPlanName(plan) }));
       await fetchPlans();
     } catch {
-      setError("Failed to save plan");
+      setError(t("failedToSave"));
     } finally {
       setSavingKey(null);
     }
@@ -288,10 +296,10 @@ export default function PlansPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
-              Subscription Plans
+              {t("title")}
             </h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Configure pricing, limits, and AI model access
+              {t("subtitle")}
             </p>
           </div>
         </div>
@@ -308,12 +316,12 @@ export default function PlansPage() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              Seed Defaults
+              {t("seedDefaults")}
             </Button>
           )}
           <Button onClick={() => setShowNewPlanForm(true)} className="gap-2">
             <Plus className="h-4 w-4" />
-            Add Plan
+            {t("addPlan")}
           </Button>
         </div>
       </div>
@@ -421,15 +429,15 @@ export default function PlansPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-zinc-900 dark:text-white">
-                        {plan.name}
+                        {getPlanName(plan)}
                       </h3>
                       {!plan.isActive && (
                         <span className="text-xs bg-zinc-200 dark:bg-zinc-600 px-2 py-0.5 rounded">
-                          Inactive
+                          {t("inactive")}
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-zinc-500">{plan.nameUk}</p>
+                    <p className="text-sm text-zinc-500 font-mono">{plan.key}</p>
                   </div>
                 </div>
 

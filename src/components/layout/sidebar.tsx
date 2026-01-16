@@ -17,6 +17,7 @@ import {
   ToggleLeft,
   Layers,
   Calculator,
+  Users,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const adminNavigation = [
     { name: t("adminSettings"), href: "/admin/settings", icon: Shield },
+    { name: t("users"), href: "/admin/users", icon: Users },
     { name: t("aiTasks"), href: "/admin/ai-tasks", icon: Cpu },
     { name: t("features"), href: "/admin/features", icon: ToggleLeft },
     { name: t("plans"), href: "/admin/plans", icon: Layers },

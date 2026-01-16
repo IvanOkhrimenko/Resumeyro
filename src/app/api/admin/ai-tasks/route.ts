@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { taskType, provider, modelId, temperature, maxTokens, isEnabled, customApiUrl, customApiKeyRef } = body;
+    const { taskType, provider, modelId, fallbackModels, temperature, maxTokens, isEnabled, customApiUrl, customApiKeyRef } = body;
 
     // Validate taskType
     const validTaskTypes = Object.keys(AI_TASK_METADATA);
@@ -81,10 +81,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Model ID is required" }, { status: 400 });
     }
 
+    // Validate fallbackModels if provided
+    const validatedFallbacks = Array.isArray(fallbackModels)
+      ? fallbackModels.filter(
+          (fb: any) =>
+            fb &&
+            typeof fb.provider === "string" &&
+            typeof fb.modelId === "string" &&
+            validProviders.includes(fb.provider)
+        )
+      : [];
+
     await saveAITaskConfig({
       taskType: taskType as AITaskType,
       provider,
       modelId,
+      fallbackModels: validatedFallbacks,
       temperature: temperature ?? 0.7,
       maxTokens: maxTokens ?? 4000,
       isEnabled: isEnabled ?? true,
