@@ -21,20 +21,47 @@ async function handleCheckoutCompleted(
   const customerId = session.customer as string;
   const subscriptionId = session.subscription as string;
 
+  console.log(`[Webhook] handleCheckoutCompleted: userId=${userId}, customerId=${customerId}, subscriptionId=${subscriptionId}`);
+
   if (!userId) {
+    console.error("[Webhook] No userId in session metadata");
     return { success: false, error: "No userId in session metadata" };
   }
 
   try {
+    // Check if user has existing subscription and cancel it (for upgrades/downgrades)
+    const existingSubscription = await db.subscription.findUnique({
+      where: { userId },
+    });
+
+    if (existingSubscription?.stripeSubscriptionId &&
+        existingSubscription.stripeSubscriptionId !== subscriptionId) {
+      console.log(`[Webhook] Cancelling old subscription: ${existingSubscription.stripeSubscriptionId}`);
+      try {
+        await getStripe().subscriptions.cancel(existingSubscription.stripeSubscriptionId);
+        console.log("[Webhook] Old subscription cancelled successfully");
+      } catch (cancelError) {
+        // Log but don't fail - the old subscription might already be cancelled
+        console.warn(`[Webhook] Failed to cancel old subscription: ${cancelError}`);
+      }
+    }
+
+    console.log("[Webhook] Retrieving subscription from Stripe...");
     const stripeSubscription = await getStripe().subscriptions.retrieve(
       subscriptionId
     ) as Stripe.Subscription;
+
     const subscriptionItem = stripeSubscription.items.data[0];
     const priceId = subscriptionItem?.price.id;
+    console.log(`[Webhook] Got subscription, priceId=${priceId}`);
+
     const plan = await getPlanFromPriceId(priceId);
+    console.log(`[Webhook] Resolved plan=${plan}`);
+
     const periodStart = subscriptionItem?.current_period_start;
     const periodEnd = subscriptionItem?.current_period_end;
 
+    console.log("[Webhook] Upserting subscription to database...");
     await withRetry(
       () =>
         db.subscription.upsert({
@@ -49,6 +76,7 @@ async function handleCheckoutCompleted(
               ? new Date(periodStart * 1000)
               : null,
             currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
+            cancelAtPeriodEnd: false,
           },
           update: {
             stripeCustomerId: customerId,
@@ -59,14 +87,17 @@ async function handleCheckoutCompleted(
               ? new Date(periodStart * 1000)
               : null,
             currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
+            cancelAtPeriodEnd: false,
           },
         }),
       { operationName: "checkout.session.completed" }
     );
 
+    console.log("[Webhook] Database upsert successful!");
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Webhook] handleCheckoutCompleted error: ${message}`);
     return { success: false, error: message };
   }
 }
@@ -75,20 +106,47 @@ async function handleSubscriptionUpdated(
   subscription: Stripe.Subscription
 ): Promise<EventResult> {
   const userId = subscription.metadata?.userId;
+  const subscriptionId = subscription.id;
 
-  if (!userId) {
-    return { success: false, error: "No userId in subscription metadata" };
+  console.log(`[Webhook] handleSubscriptionUpdated: userId=${userId}, subscriptionId=${subscriptionId}, status=${subscription.status}, cancel_at=${subscription.cancel_at}`);
+
+  // Try to find user by metadata or by subscriptionId
+  let targetUserId: string | undefined = userId;
+  if (!targetUserId) {
+    const dbSubscription = await db.subscription.findFirst({
+      where: { stripeSubscriptionId: subscriptionId },
+    });
+    targetUserId = dbSubscription?.userId;
   }
+
+  if (!targetUserId) {
+    console.error("[Webhook] No userId found for subscription update");
+    return { success: false, error: "No userId in subscription metadata and no matching subscription found" };
+  }
+
+  const finalUserId = targetUserId;
 
   try {
     const subItem = subscription.items.data[0];
     const priceId = subItem?.price.id;
     const plan = await getPlanFromPriceId(priceId);
 
+    // Determine status - check for cancellation
+    // Note: cancel_at means "scheduled to cancel" but still active until then
+    // Only mark as CANCELED when status is actually "canceled"
     let status: SubscriptionStatus = "ACTIVE";
     if (subscription.status === "past_due") status = "PAST_DUE";
     if (subscription.status === "canceled") status = "CANCELED";
     if (subscription.status === "unpaid") status = "PAST_DUE";
+
+    // Only set plan to FREE when subscription is actually canceled (not just scheduled)
+    const isActuallyCanceled = subscription.status === "canceled";
+    const cancelAtPeriodEnd = subscription.cancel_at !== null || subscription.cancel_at_period_end === true;
+
+    const finalPlan = isActuallyCanceled ? "FREE" : plan;
+    const finalStatus = status;
+
+    console.log(`[Webhook] Updating subscription: plan=${finalPlan}, status=${finalStatus}, stripeStatus=${subscription.status}, cancel_at=${subscription.cancel_at}, cancelAtPeriodEnd=${cancelAtPeriodEnd}`);
 
     const startDate = subItem?.current_period_start;
     const endDate = subItem?.current_period_end;
@@ -96,20 +154,24 @@ async function handleSubscriptionUpdated(
     await withRetry(
       () =>
         db.subscription.update({
-          where: { userId },
+          where: { userId: finalUserId },
           data: {
-            plan,
-            status,
+            plan: finalPlan,
+            status: finalStatus,
             currentPeriodStart: startDate ? new Date(startDate * 1000) : null,
             currentPeriodEnd: endDate ? new Date(endDate * 1000) : null,
+            stripeSubscriptionId: isActuallyCanceled ? null : subscriptionId,
+            cancelAtPeriodEnd: cancelAtPeriodEnd,
           },
         }),
       { operationName: "subscription.updated" }
     );
 
+    console.log("[Webhook] Subscription updated successfully");
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Webhook] handleSubscriptionUpdated error: ${message}`);
     return { success: false, error: message };
   }
 }
@@ -118,16 +180,41 @@ async function handleSubscriptionDeleted(
   subscription: Stripe.Subscription
 ): Promise<EventResult> {
   const userId = subscription.metadata?.userId;
+  const subscriptionId = subscription.id;
 
-  if (!userId) {
-    return { success: false, error: "No userId in subscription metadata" };
-  }
+  console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}`);
 
   try {
+    // Try to find subscription by userId first, then by stripeSubscriptionId
+    let dbSubscription = userId
+      ? await db.subscription.findUnique({ where: { userId } })
+      : null;
+
+    if (!dbSubscription) {
+      // Fallback: find by stripeSubscriptionId
+      dbSubscription = await db.subscription.findFirst({
+        where: { stripeSubscriptionId: subscriptionId },
+      });
+    }
+
+    if (!dbSubscription) {
+      console.warn(`[Webhook] No subscription found for deletion: userId=${userId}, subscriptionId=${subscriptionId}`);
+      return { success: false, error: "No subscription found in database" };
+    }
+
+    // IMPORTANT: Only reset to FREE if this is the SAME subscription that's being deleted
+    // If user already has a different subscription (e.g., from downgrade/upgrade), don't reset
+    if (dbSubscription.stripeSubscriptionId && dbSubscription.stripeSubscriptionId !== subscriptionId) {
+      console.log(`[Webhook] Subscription ${subscriptionId} deleted, but user already has different subscription ${dbSubscription.stripeSubscriptionId}. Skipping reset to FREE.`);
+      return { success: true };
+    }
+
+    console.log(`[Webhook] Found subscription for user: ${dbSubscription.userId}, updating to FREE/CANCELED`);
+
     await withRetry(
       () =>
         db.subscription.update({
-          where: { userId },
+          where: { userId: dbSubscription.userId },
           data: {
             plan: "FREE",
             status: "CANCELED",
@@ -137,9 +224,11 @@ async function handleSubscriptionDeleted(
       { operationName: "subscription.deleted" }
     );
 
+    console.log("[Webhook] Subscription deleted successfully");
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Webhook] handleSubscriptionDeleted error: ${message}`);
     return { success: false, error: message };
   }
 }
