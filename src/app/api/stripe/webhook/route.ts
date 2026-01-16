@@ -181,10 +181,27 @@ async function handleSubscriptionDeleted(
 ): Promise<EventResult> {
   const userId = subscription.metadata?.userId;
   const subscriptionId = subscription.id;
+  const customerId = subscription.customer as string;
 
-  console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}`);
+  console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}, customerId=${customerId}`);
 
   try {
+    // IMPORTANT: Before resetting to FREE, check if customer has other active subscriptions in Stripe
+    // This handles race conditions when downgrading (old subscription deleted, new one created simultaneously)
+    if (customerId) {
+      const activeSubscriptions = await getStripe().subscriptions.list({
+        customer: customerId,
+        status: "active",
+        limit: 1,
+      });
+
+      if (activeSubscriptions.data.length > 0) {
+        const otherSub = activeSubscriptions.data[0];
+        console.log(`[Webhook] Customer ${customerId} has another active subscription ${otherSub.id}. Skipping reset to FREE.`);
+        return { success: true };
+      }
+    }
+
     // Try to find subscription by userId first, then by stripeSubscriptionId
     let dbSubscription = userId
       ? await db.subscription.findUnique({ where: { userId } })
@@ -202,8 +219,7 @@ async function handleSubscriptionDeleted(
       return { success: false, error: "No subscription found in database" };
     }
 
-    // IMPORTANT: Only reset to FREE if this is the SAME subscription that's being deleted
-    // If user already has a different subscription (e.g., from downgrade/upgrade), don't reset
+    // Double-check: if DB already has a different subscription ID, don't reset
     if (dbSubscription.stripeSubscriptionId && dbSubscription.stripeSubscriptionId !== subscriptionId) {
       console.log(`[Webhook] Subscription ${subscriptionId} deleted, but user already has different subscription ${dbSubscription.stripeSubscriptionId}. Skipping reset to FREE.`);
       return { success: true };
