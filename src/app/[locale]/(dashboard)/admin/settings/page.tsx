@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -262,6 +263,7 @@ const colorClasses: Record<string, {
 };
 
 export default function AdminSettingsPage() {
+  const t = useTranslations("adminSettings");
   const [settings, setSettings] = useState<Setting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -652,7 +654,7 @@ export default function AdminSettingsPage() {
                 className="flex items-center gap-1.5"
               >
                 <Info className="h-4 w-4" />
-                Як отримати ключі
+                {t("howToGetKeys")}
                 {expandedGuides["AI"] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
             </div>
@@ -865,7 +867,7 @@ export default function AdminSettingsPage() {
                     className="flex items-center gap-1.5"
                   >
                     <Info className="h-4 w-4" />
-                    Інструкція
+                    {t("instructions")}
                     {expandedGuides[category] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </Button>
                 )}

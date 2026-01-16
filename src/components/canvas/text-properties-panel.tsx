@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useTranslations } from "next-intl";
 import {
   Bold,
   Italic,
@@ -67,6 +68,7 @@ const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
 export function TextPropertiesPanel() {
   const { canvas, selectedObjects, saveToHistory, loadFromJSON, layers, moveObjectToLayer, sendToBack, bringToFront } = useCanvasStore();
   const { updateProperty, updateAllMatching, flushHistory } = useDebouncedCanvasUpdate();
+  const t = useTranslations("canvas");
 
   // Template state
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
@@ -1104,7 +1106,7 @@ export function TextPropertiesPanel() {
                     <path d="M3 3v5h5" />
                   </svg>
                 )}
-                Повернути оригінал
+                {t("revertOriginal")}
               </button>
             )}
             <div className="max-h-[220px] overflow-y-auto rounded-lg border border-zinc-100 dark:border-zinc-800">

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { locales, defaultLocale } from "@/i18n/config";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
@@ -7,55 +8,60 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // Static pages with their priorities and change frequencies
   const staticPages = [
     {
-      url: baseUrl,
-      lastModified: currentDate,
+      path: "",
       changeFrequency: "weekly" as const,
       priority: 1.0,
     },
     {
-      url: `${baseUrl}/pricing`,
-      lastModified: currentDate,
+      path: "/pricing",
       changeFrequency: "weekly" as const,
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/login`,
-      lastModified: currentDate,
+      path: "/login",
       changeFrequency: "monthly" as const,
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/register`,
-      lastModified: currentDate,
+      path: "/register",
       changeFrequency: "monthly" as const,
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/privacy`,
-      lastModified: currentDate,
+      path: "/privacy",
       changeFrequency: "yearly" as const,
       priority: 0.3,
     },
     {
-      url: `${baseUrl}/terms`,
-      lastModified: currentDate,
+      path: "/terms",
       changeFrequency: "yearly" as const,
       priority: 0.3,
     },
   ];
 
-  // Generate alternate language URLs for each page
-  const sitemapEntries: MetadataRoute.Sitemap = staticPages.flatMap((page) => [
-    {
-      ...page,
-      alternates: {
-        languages: {
-          en: page.url,
-          uk: page.url,
+  // Generate sitemap entries for all locales
+  const sitemapEntries: MetadataRoute.Sitemap = staticPages.flatMap((page) => {
+    // Create entries for each locale
+    return locales.map((locale) => {
+      const url = `${baseUrl}/${locale}${page.path}`;
+
+      // Generate alternates for all locales
+      const languages: Record<string, string> = {};
+      locales.forEach((l) => {
+        languages[l] = `${baseUrl}/${l}${page.path}`;
+      });
+
+      return {
+        url,
+        lastModified: currentDate,
+        changeFrequency: page.changeFrequency,
+        priority: locale === defaultLocale ? page.priority : page.priority * 0.9,
+        alternates: {
+          languages,
         },
-      },
-    },
-  ]);
+      };
+    });
+  });
 
   return sitemapEntries;
 }

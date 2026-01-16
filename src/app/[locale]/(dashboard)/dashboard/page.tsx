@@ -1,7 +1,7 @@
 import { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { Plus, FileText, Sparkles, TrendingUp, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,7 +77,14 @@ async function getDashboardData(userId: string) {
   };
 }
 
-export default async function DashboardPage() {
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function DashboardPage({ params }: Props) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
   const session = await auth();
   if (!session?.user?.id) {
     redirect("/login");

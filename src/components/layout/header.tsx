@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import { Link } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { FileText, Menu, LogOut, User, Settings, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations, useLocale } from "next-intl";
+import { useTranslations } from "next-intl";
 import {
   Wand2,
   Upload,
@@ -25,24 +25,14 @@ import { cn } from "@/lib/utils";
 type Style = "professional" | "creative" | "minimal";
 type Step = "idle" | "analyzing" | "generating" | "formatting" | "complete" | "error";
 
-const styles: { id: Style; name: string; nameUk: string; icon: React.ElementType; description: string }[] = [
-  { id: "professional", name: "Professional", nameUk: "Професійний", icon: Briefcase, description: "Formal, achievement-focused" },
-  { id: "creative", name: "Creative", nameUk: "Креативний", icon: Palette, description: "Expressive, personality-driven" },
-  { id: "minimal", name: "Minimal", nameUk: "Мінімальний", icon: Minus, description: "Concise, essential info only" },
+const styles: { id: Style; translationKey: string; icon: React.ElementType }[] = [
+  { id: "professional", translationKey: "styleProfessional", icon: Briefcase },
+  { id: "creative", translationKey: "styleCreative", icon: Palette },
+  { id: "minimal", translationKey: "styleMinimal", icon: Minus },
 ];
-
-const stepLabels: Record<Step, { en: string; uk: string }> = {
-  idle: { en: "Ready", uk: "Готово" },
-  analyzing: { en: "Analyzing your request", uk: "Аналізуємо запит" },
-  generating: { en: "Generating content", uk: "Генеруємо контент" },
-  formatting: { en: "Formatting resume", uk: "Форматуємо резюме" },
-  complete: { en: "Done!", uk: "Готово!" },
-  error: { en: "Error occurred", uk: "Виникла помилка" },
-};
 
 export default function AIBuilderPage() {
   const router = useRouter();
-  const locale = useLocale();
   const t = useTranslations("aiBuilder");
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const templateInputRef = useRef<HTMLInputElement>(null);
@@ -247,12 +237,10 @@ export default function AIBuilderPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25">
                 <Wand2 className="h-5 w-5" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">AI Resume Builder</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
             </div>
             <p className="text-zinc-500 dark:text-zinc-400">
-              Describe your ideal resume and let AI create it for you
-              <span className="mx-2 text-zinc-300 dark:text-zinc-600">•</span>
-              <span className="text-zinc-400 dark:text-zinc-500">Опишіть бажане резюме</span>
+              {t("subtitle")}
             </p>
           </div>
         </div>
@@ -267,24 +255,21 @@ export default function AIBuilderPage() {
               <div className="relative rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <Label className="mb-3 flex items-center gap-2 text-sm font-medium">
                   <Sparkles className="h-4 w-4 text-amber-500" />
-                  Describe your resume
-                  <span className="text-zinc-400 dark:text-zinc-500">/ Опишіть резюме</span>
+                  {t("describeResume")}
                 </Label>
                 <Textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="E.g., Create a resume for a Senior Angular Developer with 8 years of experience, focusing on enterprise applications and team leadership...
-
-Напр., Створи резюме для Senior Angular розробника з 8 роками досвіду, фокус на enterprise додатках та керівництві командою..."
+                  placeholder={t("promptPlaceholder")}
                   className="min-h-[160px] resize-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
                   disabled={isProcessing}
                 />
                 <div className="mt-3 flex items-center justify-between border-t border-zinc-100 pt-3 dark:border-zinc-800">
                   <span className="text-xs text-zinc-400">
-                    {prompt.length} characters
+                    {prompt.length} {t("characters")}
                   </span>
                   {prompt.length > 0 && prompt.length < 10 && (
-                    <span className="text-xs text-amber-600">Minimum 10 characters</span>
+                    <span className="text-xs text-amber-600">{t("minimumChars")}</span>
                   )}
                 </div>
               </div>
@@ -296,8 +281,8 @@ export default function AIBuilderPage() {
               <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <Label className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <FileText className="h-4 w-4 text-emerald-500" />
-                  Ваше резюме
-                  <span className="text-xs font-normal text-zinc-400">(контент)</span>
+                  {t("yourResume")}
+                  <span className="text-xs font-normal text-zinc-400">{t("content")}</span>
                 </Label>
 
                 <div
@@ -317,10 +302,10 @@ export default function AIBuilderPage() {
                     <Upload className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <p className="text-center text-xs text-zinc-600 dark:text-zinc-400">
-                    PDF або скріншот резюме
+                    {t("pdfOrScreenshot")}
                   </p>
                   <p className="mt-0.5 text-[10px] text-zinc-400">
-                    Ctrl+V для вставки • OCR
+                    {t("pasteHint")}
                   </p>
                   <input
                     ref={resumeInputRef}
@@ -375,8 +360,8 @@ export default function AIBuilderPage() {
               <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <Label className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <Palette className="h-4 w-4 text-violet-500" />
-                  Шаблон дизайну
-                  <span className="text-xs font-normal text-zinc-400">(стиль)</span>
+                  {t("designTemplate")}
+                  <span className="text-xs font-normal text-zinc-400">{t("styleSource")}</span>
                 </Label>
 
                 <div
@@ -396,10 +381,10 @@ export default function AIBuilderPage() {
                     <Palette className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                   </div>
                   <p className="text-center text-xs text-zinc-600 dark:text-zinc-400">
-                    Зображення шаблону
+                    {t("templateImage")}
                   </p>
                   <p className="mt-0.5 text-[10px] text-zinc-400">
-                    Скопіюємо стиль та кольори
+                    {t("copyStyleColors")}
                   </p>
                   <input
                     ref={templateInputRef}
@@ -446,7 +431,7 @@ export default function AIBuilderPage() {
             {/* Style picker */}
             <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
               <Label className="mb-3 block text-sm font-medium">
-                Style <span className="text-zinc-400">/ Стиль</span>
+                {t("styleLabel")}
               </Label>
               <div className="grid grid-cols-3 gap-2">
                 {styles.map((style) => (
@@ -462,7 +447,7 @@ export default function AIBuilderPage() {
                     )}
                   >
                     <style.icon className="h-4 w-4" />
-                    <span className="text-xs font-medium">{locale === "uk" ? style.nameUk : style.name}</span>
+                    <span className="text-xs font-medium">{t(style.translationKey)}</span>
                   </button>
                 ))}
               </div>
@@ -546,7 +531,7 @@ export default function AIBuilderPage() {
               {/* Error message */}
               {currentStep === "error" && error && (
                 <div className="mt-6 rounded-xl bg-red-50 p-4 dark:bg-red-950/30">
-                  <p className="text-sm font-medium text-red-600 dark:text-red-400">Error</p>
+                  <p className="text-sm font-medium text-red-600 dark:text-red-400">{t("errorTitle")}</p>
                   <p className="mt-1 text-sm text-red-500 dark:text-red-400/80">{error}</p>
                   <Button
                     variant="outline"
@@ -554,7 +539,7 @@ export default function AIBuilderPage() {
                     onClick={() => setCurrentStep("idle")}
                     className="mt-3"
                   >
-                    Try again
+                    {t("tryAgain")}
                   </Button>
                 </div>
               )}
@@ -563,10 +548,10 @@ export default function AIBuilderPage() {
               {currentStep === "idle" && (
                 <div className="mt-6 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-900">
                   <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    💡 <strong>Tip:</strong> Include specific details like job title, years of experience, key skills, and target industry for best results.
+                    💡 <strong>{t("tipTitle")}:</strong> {t("tipText")}
                   </p>
                   <p className="mt-2 text-xs text-zinc-400">
-                    Додайте деталі: посада, досвід, навички, галузь
+                    {t("tipHint")}
                   </p>
                 </div>
               )}
@@ -576,10 +561,10 @@ export default function AIBuilderPage() {
                 <div className="mt-6 rounded-xl bg-green-50 p-4 dark:bg-green-950/30">
                   <p className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
                     <CheckCircle2 className="h-4 w-4" />
-                    Resume created successfully!
+                    {t("successTitle")}
                   </p>
                   <p className="mt-1 text-xs text-green-500">
-                    Redirecting to editor... / Переходимо до редактора...
+                    {t("redirecting")}
                   </p>
                 </div>
               )}

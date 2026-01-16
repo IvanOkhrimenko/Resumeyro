@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { FileText } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 
 export default function AuthLayout({
   children,

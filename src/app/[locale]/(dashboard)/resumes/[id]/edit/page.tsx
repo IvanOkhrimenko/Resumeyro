@@ -14,6 +14,7 @@ import { useCanvasStore } from "@/stores/canvas-store";
 import { downloadPDF } from "@/lib/canvas/export";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { SaveTemplateModal } from "@/components/canvas/save-template-modal";
 
 // Dynamic import for Fabric.js canvas (client-side only)
 const ResumeCanvas = dynamic(
@@ -54,13 +55,28 @@ export default function ResumeEditPage({ params }: { params: Promise<{ id: strin
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [subscriptionLimits, setSubscriptionLimits] = useState<SubscriptionLimits | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
   const { canvas, markClean, triggerAIAssistant } = useCanvasStore();
   const { toast } = useToast();
 
   useEffect(() => {
     fetchResume();
     fetchSubscription();
+    fetchUserRole();
   }, [id]);
+
+  async function fetchUserRole() {
+    try {
+      const res = await fetch("/api/user/role");
+      if (res.ok) {
+        const data = await res.json();
+        setIsAdmin(data.role === "ADMIN");
+      }
+    } catch (err) {
+      console.warn("Failed to fetch user role:", err);
+    }
+  }
 
   async function fetchSubscription() {
     try {
@@ -256,6 +272,8 @@ export default function ResumeEditPage({ params }: { params: Promise<{ id: strin
         isSaving={isSaving}
         isExporting={isExporting}
         onAIAssistant={triggerAIAssistant}
+        isAdmin={isAdmin}
+        onSaveAsTemplate={() => setShowSaveTemplateModal(true)}
       />
 
       {/* Main content */}
@@ -288,6 +306,12 @@ export default function ResumeEditPage({ params }: { params: Promise<{ id: strin
           <TextPropertiesPanel />
         </div>
       </div>
+
+      {/* Save as Template Modal (Admin only) */}
+      <SaveTemplateModal
+        open={showSaveTemplateModal}
+        onOpenChange={setShowSaveTemplateModal}
+      />
     </div>
   );
 }

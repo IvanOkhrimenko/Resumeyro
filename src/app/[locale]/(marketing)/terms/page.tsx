@@ -1,7 +1,7 @@
 import { Metadata } from "next";
-import Link from "next/link";
 import { FileText, ArrowLeft } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { BreadcrumbJsonLd } from "@/components/seo/json-ld";
 
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
@@ -24,7 +24,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function TermsOfServicePage() {
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function TermsOfServicePage({ params }: Props) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
   const t = await getTranslations("terms");
   const tCommon = await getTranslations("common");
   const tFooter = await getTranslations("footer");

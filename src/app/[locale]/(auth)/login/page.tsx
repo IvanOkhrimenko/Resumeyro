@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "@/components/auth/login-form";
 
@@ -8,7 +8,14 @@ export const metadata: Metadata = {
   description: "Sign in to your Resumeyro account",
 };
 
-export default async function LoginPage() {
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function LoginPage({ params }: Props) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
   const t = await getTranslations("auth");
 
   return (

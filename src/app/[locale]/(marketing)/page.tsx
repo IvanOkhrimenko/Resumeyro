@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import {
   ArrowRight,
   Sparkles,
@@ -11,7 +11,6 @@ import {
   Check,
   Star,
   Zap,
-  Globe,
   Shield,
   MessageSquare,
 } from "lucide-react";
@@ -24,7 +23,7 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
 export const metadata: Metadata = {
   title: "Resumeyro - AI-Powered Resume Builder | Create Professional Resumes Free",
   description:
-    "Build professional, ATS-friendly resumes in minutes. AI-powered writing assistant and templates for US, EU, and Ukrainian job markets. Free to start, no credit card required.",
+    "Build professional, ATS-friendly resumes in seconds. Upload your old resume and let AI enhance it, or create from scratch. Free to start, no credit card required.",
   keywords: [
     "AI resume builder",
     "free resume maker",
@@ -40,27 +39,28 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Resumeyro - AI-Powered Resume Builder",
-    description: "Build professional, ATS-friendly resumes in minutes with AI. Free forever for 1 resume.",
+    description: "Build professional, ATS-friendly resumes in seconds with AI. Free forever for 1 resume.",
     url: baseUrl,
+    siteName: "Resumeyro",
     type: "website",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Resumeyro - AI-Powered Resume Builder",
-      },
-    ],
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
     title: "Resumeyro - AI-Powered Resume Builder",
-    description: "Build professional, ATS-friendly resumes in minutes with AI.",
-    images: ["/og-image.png"],
+    description: "Build professional, ATS-friendly resumes in seconds with AI.",
+    creator: "@resumeyro",
   },
 };
 
-export default async function HomePage() {
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function HomePage({ params }: Props) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
   const t = await getTranslations("home");
   const tFeatures = await getTranslations("features");
   const tPlans = await getTranslations("plans");
@@ -129,14 +129,6 @@ export default async function HomePage() {
                   {t("createMyResume")}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 px-8 text-base"
-                asChild
-              >
-                <Link href="/ai-builder">{t("tryAiBuilder")}</Link>
               </Button>
             </div>
 
@@ -269,9 +261,9 @@ export default async function HomePage() {
                 accent: "amber",
               },
               {
-                icon: Globe,
-                title: tFeatures("regionalTemplates"),
-                description: tFeatures("regionalTemplatesDesc"),
+                icon: Upload,
+                title: tFeatures("smartImport"),
+                description: tFeatures("smartImportDesc"),
                 accent: "blue",
               },
               {
@@ -324,42 +316,6 @@ export default async function HomePage() {
                 </div>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* Value proposition callout */}
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-4xl rounded-3xl bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-8 text-white dark:from-zinc-100 dark:via-zinc-50 dark:to-zinc-100 dark:text-zinc-900 md:p-12">
-            <div className="grid items-center gap-8 md:grid-cols-2">
-              <div>
-                <h2 className="mb-4 text-2xl font-bold md:text-3xl">
-                  {t("regionalTitle")}
-                </h2>
-                <p className="text-zinc-300 dark:text-zinc-600">
-                  {t("regionalDescription")}
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { flag: "🇺🇸", label: t("regionUSA"), detail: t("regionUSADetail") },
-                  { flag: "🇪🇺", label: t("regionEU"), detail: t("regionEUDetail") },
-                  { flag: "🇺🇦", label: t("regionUA"), detail: t("regionUADetail") },
-                ].map((region) => (
-                  <div
-                    key={region.label}
-                    className="rounded-xl bg-white/10 p-4 text-center backdrop-blur dark:bg-zinc-900/10"
-                  >
-                    <div className="mb-2 text-3xl">{region.flag}</div>
-                    <div className="font-semibold">{region.label}</div>
-                    <div className="text-xs text-zinc-400 dark:text-zinc-500">
-                      {region.detail}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </section>

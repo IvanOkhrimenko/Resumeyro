@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
 import { PricingCards } from "@/components/pricing/pricing-cards";
 import { CanceledMessage } from "@/components/pricing/canceled-message";
 import { ProductJsonLd, FAQJsonLd, BreadcrumbJsonLd } from "@/components/seo/json-ld";
@@ -63,7 +63,14 @@ const pricingOffers = [
   { name: "Premium Plan", price: "19", priceCurrency: "USD" },
 ];
 
-export default async function PricingPage() {
+interface Props {
+  params: Promise<{ locale: string }>;
+}
+
+export default async function PricingPage({ params }: Props) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+
   const t = await getTranslations("pricing");
 
   return (

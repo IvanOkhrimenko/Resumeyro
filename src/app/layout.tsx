@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
-import { getLocale, getMessages } from "next-intl/server";
-import { Providers } from "./providers";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -85,32 +83,24 @@ export const metadata: Metadata = {
   alternates: {
     canonical: baseUrl,
     languages: {
-      "en-US": baseUrl,
-      "uk-UA": baseUrl,
+      "en-US": `${baseUrl}/en`,
+      "uk-UA": `${baseUrl}/uk`,
     },
   },
-  // verification: {
-  //   google: "your-google-verification-code",
-  // },
   category: "technology",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = await getLocale();
-  const messages = await getMessages();
-
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html suppressHydrationWarning>
       <body
         className={`${dmSans.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Providers locale={locale} messages={messages}>
-          {children}
-        </Providers>
+        {children}
       </body>
     </html>
   );
