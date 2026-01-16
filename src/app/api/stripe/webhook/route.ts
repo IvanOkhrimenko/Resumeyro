@@ -186,6 +186,10 @@ async function handleSubscriptionDeleted(
   console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}, customerId=${customerId}`);
 
   try {
+    // IMPORTANT: Wait a bit before checking for other subscriptions
+    // This handles race conditions when downgrading - checkout.session.completed might still be processing
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     // IMPORTANT: Before resetting to FREE, check if customer has other subscriptions in Stripe
     // This handles race conditions when downgrading (old subscription deleted, new one created simultaneously)
     // Check for any non-canceled subscription, not just "active" (new subscription might still be processing)
@@ -194,6 +198,9 @@ async function handleSubscriptionDeleted(
         customer: customerId,
         limit: 10,
       });
+
+      console.log(`[Webhook] Found ${allSubscriptions.data.length} subscriptions for customer ${customerId}:`,
+        allSubscriptions.data.map(s => ({ id: s.id, status: s.status })));
 
       // Find any subscription that is NOT the one being deleted and is NOT canceled
       const otherSubscription = allSubscriptions.data.find(
