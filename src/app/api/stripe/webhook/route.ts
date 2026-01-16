@@ -186,18 +186,22 @@ async function handleSubscriptionDeleted(
   console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}, customerId=${customerId}`);
 
   try {
-    // IMPORTANT: Before resetting to FREE, check if customer has other active subscriptions in Stripe
+    // IMPORTANT: Before resetting to FREE, check if customer has other subscriptions in Stripe
     // This handles race conditions when downgrading (old subscription deleted, new one created simultaneously)
+    // Check for any non-canceled subscription, not just "active" (new subscription might still be processing)
     if (customerId) {
-      const activeSubscriptions = await getStripe().subscriptions.list({
+      const allSubscriptions = await getStripe().subscriptions.list({
         customer: customerId,
-        status: "active",
-        limit: 1,
+        limit: 10,
       });
 
-      if (activeSubscriptions.data.length > 0) {
-        const otherSub = activeSubscriptions.data[0];
-        console.log(`[Webhook] Customer ${customerId} has another active subscription ${otherSub.id}. Skipping reset to FREE.`);
+      // Find any subscription that is NOT the one being deleted and is NOT canceled
+      const otherSubscription = allSubscriptions.data.find(
+        sub => sub.id !== subscriptionId && sub.status !== "canceled"
+      );
+
+      if (otherSubscription) {
+        console.log(`[Webhook] Customer ${customerId} has another subscription ${otherSubscription.id} (status: ${otherSubscription.status}). Skipping reset to FREE.`);
         return { success: true };
       }
     }
