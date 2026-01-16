@@ -18,6 +18,9 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://resumeyro.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
+  verification: {
+    google: "ziiz7vlQ96nn9FO17eaDhOX-9HrDn0nPEf",
+  },
   title: {
     default: "Resumeyro - AI-Powered Resume Builder | Create Professional Resumes",
     template: "%s | Resumeyro",
