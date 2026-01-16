@@ -208,7 +208,17 @@
     "premium": "Premium",
     "free": "Free",
     "useTemplate": "Use Template",
-    "preview": "Preview"
+    "preview": "Preview",
+    "delete": "Delete",
+    "deleteTitle": "Delete Template",
+    "deleteDescription": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
+    "deleteWarning": "This template is used by {count} resume(s) and cannot be deleted.",
+    "deleteSuccess": "Template deleted successfully",
+    "deleteFailed": "Failed to delete template",
+    "cancel": "Cancel",
+    "usedBy": "Used by {count}",
+    "builtin": "Built-in",
+    "noTemplates": "No templates found for this style"
   },
   "regions": {
     "us": "United States",
