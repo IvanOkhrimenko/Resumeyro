@@ -181,45 +181,24 @@ async function handleSubscriptionDeleted(
 ): Promise<EventResult> {
   const userId = subscription.metadata?.userId;
   const subscriptionId = subscription.id;
-  const customerId = subscription.customer as string;
 
-  console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}, customerId=${customerId}`);
+  console.log(`[Webhook] handleSubscriptionDeleted: userId=${userId}, subscriptionId=${subscriptionId}`);
+
+  // NOTE: We do NOT reset plan to FREE here.
+  // Plan changes are handled by:
+  // - subscription.updated (status: "canceled") → sets plan to FREE
+  // - checkout.session.completed → sets new plan on upgrade/downgrade
+  //
+  // This event only clears the stripeSubscriptionId if it matches the deleted subscription.
+  // This prevents race conditions during downgrade when deleted and checkout.completed arrive simultaneously.
 
   try {
-    // IMPORTANT: Wait a bit before checking for other subscriptions
-    // This handles race conditions when downgrading - checkout.session.completed might still be processing
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // IMPORTANT: Before resetting to FREE, check if customer has other subscriptions in Stripe
-    // This handles race conditions when downgrading (old subscription deleted, new one created simultaneously)
-    // Check for any non-canceled subscription, not just "active" (new subscription might still be processing)
-    if (customerId) {
-      const allSubscriptions = await getStripe().subscriptions.list({
-        customer: customerId,
-        limit: 10,
-      });
-
-      console.log(`[Webhook] Found ${allSubscriptions.data.length} subscriptions for customer ${customerId}:`,
-        allSubscriptions.data.map(s => ({ id: s.id, status: s.status })));
-
-      // Find any subscription that is NOT the one being deleted and is NOT canceled
-      const otherSubscription = allSubscriptions.data.find(
-        sub => sub.id !== subscriptionId && sub.status !== "canceled"
-      );
-
-      if (otherSubscription) {
-        console.log(`[Webhook] Customer ${customerId} has another subscription ${otherSubscription.id} (status: ${otherSubscription.status}). Skipping reset to FREE.`);
-        return { success: true };
-      }
-    }
-
     // Try to find subscription by userId first, then by stripeSubscriptionId
     let dbSubscription = userId
       ? await db.subscription.findUnique({ where: { userId } })
       : null;
 
     if (!dbSubscription) {
-      // Fallback: find by stripeSubscriptionId
       dbSubscription = await db.subscription.findFirst({
         where: { stripeSubscriptionId: subscriptionId },
       });
@@ -227,31 +206,28 @@ async function handleSubscriptionDeleted(
 
     if (!dbSubscription) {
       console.warn(`[Webhook] No subscription found for deletion: userId=${userId}, subscriptionId=${subscriptionId}`);
-      return { success: false, error: "No subscription found in database" };
+      return { success: true }; // Not an error - might be already handled
     }
 
-    // Double-check: if DB already has a different subscription ID, don't reset
-    if (dbSubscription.stripeSubscriptionId && dbSubscription.stripeSubscriptionId !== subscriptionId) {
-      console.log(`[Webhook] Subscription ${subscriptionId} deleted, but user already has different subscription ${dbSubscription.stripeSubscriptionId}. Skipping reset to FREE.`);
-      return { success: true };
+    // Only clear stripeSubscriptionId if it matches the deleted subscription
+    // If user already has a different subscription (from downgrade), don't touch it
+    if (dbSubscription.stripeSubscriptionId === subscriptionId) {
+      console.log(`[Webhook] Clearing stripeSubscriptionId for user: ${dbSubscription.userId}`);
+
+      await safeDbOperation(
+        () =>
+          db.subscription.update({
+            where: { userId: dbSubscription.userId },
+            data: {
+              stripeSubscriptionId: null,
+            },
+          }),
+        { operationName: "subscription.deleted" }
+      );
+    } else {
+      console.log(`[Webhook] Subscription ${subscriptionId} deleted, but user has different subscription ${dbSubscription.stripeSubscriptionId}. No changes needed.`);
     }
 
-    console.log(`[Webhook] Found subscription for user: ${dbSubscription.userId}, updating to FREE/CANCELED`);
-
-    await withRetry(
-      () =>
-        db.subscription.update({
-          where: { userId: dbSubscription.userId },
-          data: {
-            plan: "FREE",
-            status: "CANCELED",
-            stripeSubscriptionId: null,
-          },
-        }),
-      { operationName: "subscription.deleted" }
-    );
-
-    console.log("[Webhook] Subscription deleted successfully");
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
