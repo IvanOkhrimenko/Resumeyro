@@ -273,11 +273,25 @@ export async function getAITaskConfig(taskType: AITaskType): Promise<AITaskConfi
     });
 
     if (config) {
+      // Parse fallbackModels - handle both array and string (from DB migration)
+      let fallbackModels: FallbackModel[] = [];
+      if (config.fallbackModels) {
+        if (Array.isArray(config.fallbackModels)) {
+          fallbackModels = config.fallbackModels as unknown as FallbackModel[];
+        } else if (typeof config.fallbackModels === "string") {
+          try {
+            fallbackModels = JSON.parse(config.fallbackModels);
+          } catch {
+            fallbackModels = [];
+          }
+        }
+      }
+
       return {
         taskType: config.taskType,
         provider: config.provider,
         modelId: config.modelId,
-        fallbackModels: (config.fallbackModels as unknown as FallbackModel[]) || [],
+        fallbackModels,
         customApiUrl: config.customApiUrl,
         customApiKeyRef: config.customApiKeyRef,
         temperature: config.temperature,
