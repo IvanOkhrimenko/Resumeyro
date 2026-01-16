@@ -651,18 +651,20 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
             if (!(target as any).isBackground) {
               canvas.getObjects().forEach((obj: any) => {
                 // Exclude background elements from being pushed
-                if (obj !== target && obj.selectable !== false && !(obj as any).isBackground) {
-                  const objTop = obj.top || 0;
-                  const objLeft = obj.left || 0;
-                  const objWidth = obj.width || 0;
-                  const objRight = objLeft + objWidth;
+                if (obj === target) return;
+                if (obj.selectable === false) return;
+                if ((obj as any).isBackground) return;
 
-                  // Check if element is below AND has horizontal overlap (same column)
-                  const hasHorizontalOverlap = !(objRight < targetLeft || objLeft > targetRight);
+                const objTop = obj.top || 0;
+                const objLeft = obj.left || 0;
+                const objWidth = obj.width || 0;
+                const objRight = objLeft + objWidth;
 
-                  if (objTop >= initialBottom - 5 && hasHorizontalOverlap) {
-                    originalPositions.set(obj, objTop);
-                  }
+                // Check if element is below AND has horizontal overlap (same column)
+                const hasHorizontalOverlap = !(objRight < targetLeft || objLeft > targetRight);
+
+                if (objTop >= initialBottom - 5 && hasHorizontalOverlap) {
+                  originalPositions.set(obj, objTop);
                 }
               });
             }
@@ -807,6 +809,7 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
 
     // Push all elements below a certain Y position by delta amount
     // Only pushes elements that are in the same column (have horizontal overlap)
+    // Background elements (isBackground: true) don't push and aren't pushed
     const pushElementsBelow = (changedObj: any, previousBottom: number, currentBottom: number) => {
       // Don't push if the changed object is a background element
       if ((changedObj as any).isBackground) return false;
@@ -826,7 +829,13 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
       // Get all other objects sorted by their top position (top to bottom for proper ordering)
       // Exclude background elements from being pushed
       const otherObjects = canvas.getObjects()
-        .filter((obj: any) => obj !== changedObj && obj.selectable !== false && !(obj as any)._isPageBreak && !(obj as any).isBackground)
+        .filter((obj: any) => {
+          if (obj === changedObj) return false;
+          if (obj.selectable === false) return false;
+          if ((obj as any)._isPageBreak) return false;
+          if ((obj as any).isBackground) return false;
+          return true;
+        })
         .sort((a: any, b: any) => (a.top || 0) - (b.top || 0));
 
       // Threshold: push any object whose top is at or below where the text ended
@@ -1206,9 +1215,32 @@ export function ResumeCanvas({ initialData, onSave }: ResumeCanvasProps) {
 
     // Constrain on object added and update canvas size for infinite canvas
     canvas.on("object:added", (e) => {
-      const obj = e.target;
+      const obj = e.target as any;
       if (obj) {
         constrainToCanvas(obj);
+
+        // Assign layer if not already set
+        if (!obj.layerId) {
+          const { activeLayerId, layers } = useCanvasStore.getState();
+          if (obj.isBackground) {
+            // Background elements go to background layer
+            obj.layerId = 'background';
+          } else {
+            // Use active layer or default to content
+            obj.layerId = activeLayerId || 'content';
+          }
+
+          // Apply layer visibility and lock state
+          const targetLayer = layers.find((l: any) => l.id === obj.layerId);
+          if (targetLayer) {
+            if (!targetLayer.visible) obj.visible = false;
+            if (targetLayer.locked) {
+              obj.selectable = false;
+              obj.evented = false;
+            }
+          }
+        }
+
         // Update canvas size to accommodate new element (infinite canvas grows as needed)
         setTimeout(() => updateCanvasSizeRef.current?.(), 0);
       }

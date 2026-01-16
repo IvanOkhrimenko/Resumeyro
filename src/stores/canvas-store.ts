@@ -12,6 +12,26 @@ export interface PageData {
   objects: any[];
 }
 
+// Layer data structure
+export interface Layer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  color: string; // Visual indicator color
+  order: number; // Layer order (0 = back, higher = front)
+}
+
+// Default layers
+const DEFAULT_LAYERS: Layer[] = [
+  { id: 'background', name: 'Background', visible: true, locked: false, color: '#8b5cf6', order: 0 },
+  { id: 'content', name: 'Content', visible: true, locked: false, color: '#3b82f6', order: 1 },
+  { id: 'foreground', name: 'Foreground', visible: true, locked: false, color: '#10b981', order: 2 },
+];
+
+// Generate unique layer ID
+const generateLayerId = () => `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 // Constrain a single object to canvas bounds
 // For infinite canvas: only constrain horizontally, allow unlimited vertical
 const constrainObjectToBounds = (obj: FabricObject) => {
@@ -109,6 +129,20 @@ interface CanvasStore {
   smartArrangeEnabled: boolean;
   toggleSmartArrange: () => void;
 
+  // Layer system
+  layers: Layer[];
+  activeLayerId: string;
+  addLayer: (name: string) => void;
+  deleteLayer: (layerId: string) => void;
+  renameLayer: (layerId: string, name: string) => void;
+  toggleLayerVisibility: (layerId: string) => void;
+  toggleLayerLock: (layerId: string) => void;
+  reorderLayers: (fromIndex: number, toIndex: number) => void;
+  setActiveLayer: (layerId: string) => void;
+  moveObjectToLayer: (objectIdOrObject: string | any, layerId: string) => void;
+  getObjectsInLayer: (layerId: string) => FabricObject[];
+  reorderCanvasByLayers: () => void;
+
   // Serialization
   toJSON: () => string | null;
   toMultiPageJSON: () => string | null;
@@ -123,7 +157,7 @@ interface CanvasStore {
 const MAX_HISTORY = 50;
 
 // Custom properties to include in JSON serialization
-const CUSTOM_PROPERTIES = ["semanticType", "semanticGroup", "id", "photoShape", "isPhoto", "isPhotoPlaceholder", "isBackground"];
+const CUSTOM_PROPERTIES = ["semanticType", "semanticGroup", "id", "photoShape", "isPhoto", "isPhotoPlaceholder", "isBackground", "layerId"];
 
 // Generate unique page ID
 const generatePageId = () => `page-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -148,6 +182,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   // Smart arrange mode
   smartArrangeEnabled: false,
+
+  // Layer system state
+  layers: [...DEFAULT_LAYERS],
+  activeLayerId: 'content',
 
   setCanvas: (canvas) => set({ canvas }),
 
@@ -522,6 +560,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     const activeObject = canvas.getActiveObject();
     if (activeObject) {
+      // Move to foreground layer and remove background flag
+      (activeObject as any).layerId = 'foreground';
+      (activeObject as any).isBackground = false;
+      // Reorder canvas to reflect layer change
+      get().reorderCanvasByLayers();
+      // Then bring to front within foreground layer
       canvas.bringObjectToFront(activeObject);
       canvas.renderAll();
       get().saveToHistory();
@@ -534,6 +578,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     const activeObject = canvas.getActiveObject();
     if (activeObject) {
+      // Move to background layer and mark as background element
+      (activeObject as any).layerId = 'background';
+      (activeObject as any).isBackground = true;
+      // Reorder canvas to reflect layer change
+      get().reorderCanvasByLayers();
+      // Then send to back within background layer
       canvas.sendObjectToBack(activeObject);
       canvas.renderAll();
       get().saveToHistory();
@@ -625,6 +675,193 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   toggleSmartArrange: () => set((state) => ({ smartArrangeEnabled: !state.smartArrangeEnabled })),
+
+  // Layer system actions
+  addLayer: (name: string) => {
+    const { layers } = get();
+    const maxOrder = Math.max(...layers.map(l => l.order));
+    const colors = ['#f59e0b', '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#a855f7'];
+    const usedColors = new Set(layers.map(l => l.color));
+    const availableColor = colors.find(c => !usedColors.has(c)) || colors[0];
+
+    const newLayer: Layer = {
+      id: generateLayerId(),
+      name,
+      visible: true,
+      locked: false,
+      color: availableColor,
+      order: maxOrder + 1,
+    };
+
+    set({ layers: [...layers, newLayer] });
+  },
+
+  deleteLayer: (layerId: string) => {
+    const { canvas, layers } = get();
+    // Cannot delete default layers
+    if (['background', 'content', 'foreground'].includes(layerId)) return;
+    if (!canvas) return;
+
+    // Move objects from deleted layer to content layer
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.layerId === layerId) {
+        obj.layerId = 'content';
+      }
+    });
+
+    set({
+      layers: layers.filter(l => l.id !== layerId),
+    });
+    get().reorderCanvasByLayers();
+    get().saveToHistory();
+  },
+
+  renameLayer: (layerId: string, name: string) => {
+    const { layers } = get();
+    set({
+      layers: layers.map(l =>
+        l.id === layerId ? { ...l, name } : l
+      ),
+    });
+  },
+
+  toggleLayerVisibility: (layerId: string) => {
+    const { canvas, layers } = get();
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer || !canvas) return;
+
+    const newVisible = !layer.visible;
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.layerId === layerId) {
+        obj.visible = newVisible;
+      }
+    });
+    canvas.renderAll();
+
+    set({
+      layers: layers.map(l =>
+        l.id === layerId ? { ...l, visible: newVisible } : l
+      ),
+    });
+  },
+
+  toggleLayerLock: (layerId: string) => {
+    const { canvas, layers } = get();
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer || !canvas) return;
+
+    const newLocked = !layer.locked;
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.layerId === layerId) {
+        obj.selectable = !newLocked;
+        obj.evented = !newLocked;
+      }
+    });
+    canvas.renderAll();
+
+    set({
+      layers: layers.map(l =>
+        l.id === layerId ? { ...l, locked: newLocked } : l
+      ),
+    });
+  },
+
+  reorderLayers: (fromIndex: number, toIndex: number) => {
+    const { layers } = get();
+    const sortedLayers = [...layers].sort((a, b) => a.order - b.order);
+
+    // Move layer from fromIndex to toIndex
+    const [movedLayer] = sortedLayers.splice(fromIndex, 1);
+    sortedLayers.splice(toIndex, 0, movedLayer);
+
+    // Reassign order values
+    const updatedLayers = sortedLayers.map((layer, index) => ({
+      ...layer,
+      order: index,
+    }));
+
+    set({ layers: updatedLayers });
+    get().reorderCanvasByLayers();
+    get().saveToHistory();
+  },
+
+  setActiveLayer: (layerId: string) => {
+    set({ activeLayerId: layerId });
+  },
+
+  moveObjectToLayer: (objectIdOrObject: string | any, layerId: string) => {
+    const { canvas, layers } = get();
+    if (!canvas) return;
+
+    const targetLayer = layers.find(l => l.id === layerId);
+    if (!targetLayer) return;
+
+    // Find the object - either by ID or use the object directly
+    let obj: any;
+    if (typeof objectIdOrObject === 'string') {
+      obj = canvas.getObjects().find((o: any) => o.id === objectIdOrObject);
+    } else {
+      obj = objectIdOrObject;
+    }
+
+    if (!obj) return;
+
+    obj.layerId = layerId;
+    // Update isBackground based on layer
+    obj.isBackground = layerId === 'background';
+    // Apply layer's visibility and lock state
+    obj.visible = targetLayer.visible;
+    obj.selectable = !targetLayer.locked;
+    obj.evented = !targetLayer.locked;
+
+    get().reorderCanvasByLayers();
+    canvas.renderAll();
+    get().saveToHistory();
+  },
+
+  getObjectsInLayer: (layerId: string) => {
+    const { canvas } = get();
+    if (!canvas) return [];
+
+    return canvas.getObjects().filter((obj: any) => {
+      const objLayerId = obj.layerId || 'content';
+      return objLayerId === layerId;
+    });
+  },
+
+  reorderCanvasByLayers: () => {
+    const { canvas, layers } = get();
+    if (!canvas) return;
+
+    const objects = canvas.getObjects();
+    const sortedLayers = [...layers].sort((a, b) => a.order - b.order);
+
+    // Group objects by layer, preserving their relative order within each layer
+    const objectsByLayer = new Map<string, FabricObject[]>();
+    sortedLayers.forEach(l => objectsByLayer.set(l.id, []));
+    // Also handle objects without a layer (put them in content)
+    objectsByLayer.set('content', objectsByLayer.get('content') || []);
+
+    objects.forEach((obj: any) => {
+      const layerId = obj.layerId || 'content';
+      const layerObjects = objectsByLayer.get(layerId);
+      if (layerObjects) {
+        layerObjects.push(obj);
+      } else {
+        // Unknown layer, put in content
+        objectsByLayer.get('content')?.push(obj);
+      }
+    });
+
+    // Rebuild canvas objects array in correct order
+    (canvas as any)._objects = [];
+    sortedLayers.forEach(layer => {
+      const layerObjects = objectsByLayer.get(layer.id) || [];
+      layerObjects.forEach(obj => (canvas as any)._objects.push(obj));
+    });
+
+    canvas.renderAll();
+  },
 
   alignObjects: (alignment) => {
     const { canvas } = get();
@@ -765,6 +1002,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       totalPages: 1,
       aiAssistantTrigger: 0,
       smartArrangeEnabled: true,
+      layers: [...DEFAULT_LAYERS],
+      activeLayerId: 'content',
     });
   },
 

@@ -728,5 +728,43 @@
     "multiModelReview": "Мульти-модельна перевірка",
     "pdfWatermark": "Водяний знак PDF",
     "prioritySupport": "Пріоритетна підтримка"
+  },
+  "templateModal": {
+    "title": "Зберегти як темплейт",
+    "description": "Збережіть цей макет canvas як багаторазовий шаблон. Користувачі зможуть створювати нові резюме на основі цього шаблону.",
+    "nameEn": "Назва шаблону (Англійська)",
+    "nameUk": "Назва шаблону (Українська)",
+    "namePlaceholder": "напр., Modern Professional",
+    "nameUkPlaceholder": "напр., Сучасний професійний",
+    "descriptionEn": "Опис (Англійська)",
+    "descriptionUk": "Опис (Українська)",
+    "descriptionPlaceholder": "Короткий опис стилю шаблону...",
+    "descriptionUkPlaceholder": "Короткий опис стилю шаблону...",
+    "category": "Категорія",
+    "selectCategory": "Виберіть категорію",
+    "region": "Регіон",
+    "selectRegion": "Виберіть регіон",
+    "premium": "Преміум шаблон (тільки для платних користувачів)",
+    "save": "Зберегти шаблон",
+    "saving": "Збереження...",
+    "cancel": "Скасувати",
+    "saveSuccess": "Шаблон успішно збережено!",
+    "saveError": "Не вдалося зберегти шаблон",
+    "canvasNotReady": "Canvas ще не готовий",
+    "nameRequired": "Назва шаблону обов'язкова"
+  },
+  "layerPanel": {
+    "title": "Шари",
+    "addLayer": "Додати шар",
+    "deleteLayer": "Видалити шар",
+    "renameLayer": "Перейменувати шар",
+    "visibility": "Показати/Сховати",
+    "lock": "Заблокувати/Розблокувати",
+    "background": "Фон",
+    "content": "Контент",
+    "foreground": "Передній план",
+    "newLayer": "Новий шар",
+    "moveToLayer": "Перемістити на шар",
+    "cannotDeleteDefault": "Неможливо видалити стандартні шари"
   }
 }

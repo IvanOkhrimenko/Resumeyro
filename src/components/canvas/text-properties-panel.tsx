@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Bold,
   Italic,
@@ -38,11 +38,20 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PhotoEditorModal } from "./photo-editor-modal";
-import { useCanvasStore } from "@/stores/canvas-store";
+import { LayerPanel } from "./layer-panel";
+import { useCanvasStore, type Layer } from "@/stores/canvas-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Layers, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { templates, getTemplateCanvasData, type TemplateDefinition } from "@/lib/templates";
 import { applyTemplateToSemanticElements, canvasHasSemanticElements } from "@/lib/canvas/semantic-template-switcher";
 import { addInferredSemanticTypes } from "@/lib/canvas/infer-semantic-types";
+import { useDebouncedCanvasUpdate } from "@/hooks/use-debounced-canvas-update";
 
 const FONT_FAMILIES = [
   { label: "Arial", value: "Arial, sans-serif" },
@@ -56,7 +65,8 @@ const FONT_FAMILIES = [
 const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
 
 export function TextPropertiesPanel() {
-  const { canvas, selectedObjects, saveToHistory, loadFromJSON } = useCanvasStore();
+  const { canvas, selectedObjects, saveToHistory, loadFromJSON, layers, moveObjectToLayer, sendToBack, bringToFront } = useCanvasStore();
+  const { updateProperty, updateAllMatching, flushHistory } = useDebouncedCanvasUpdate();
 
   // Template state
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
@@ -159,8 +169,12 @@ export function TextPropertiesPanel() {
     };
   }, [selectedTextObject, canvas]);
 
+  // Ref to track if we're in continuous update mode (slider/color picker dragging)
+  const continuousUpdateRef = useRef(false);
+
   // Apply property to selected text (or text selection if in editing mode)
-  const applyProperty = useCallback((property: string, value: any) => {
+  // skipModifiedEvent: set to true during continuous updates (slider dragging) to avoid lag
+  const applyProperty = useCallback((property: string, value: any, skipModifiedEvent = false) => {
     if (!canvas || !selectedTextObject) return;
 
     // Properties that should ALWAYS apply to the whole object (not selection)
@@ -208,6 +222,9 @@ export function TextPropertiesPanel() {
     // Render first to ensure dimensions are updated
     canvas.requestRenderAll();
 
+    // Skip modified event during continuous updates (slider dragging) to avoid lag
+    if (skipModifiedEvent) return;
+
     // Fire modified event after rendering to trigger auto-push with correct dimensions
     // Include previous height info for accurate push calculation
     // Note: saveToHistory is called by the object:modified handler in resume-canvas.tsx
@@ -228,6 +245,12 @@ export function TextPropertiesPanel() {
     }, 0);
   }, [canvas, selectedTextObject]);
 
+  // Force fire modified event (call on pointerUp after continuous updates)
+  const fireModifiedEvent = useCallback(() => {
+    if (!canvas || !selectedTextObject) return;
+    canvas.fire('object:modified', { target: selectedTextObject } as any);
+  }, [canvas, selectedTextObject]);
+
   // Handle font size change
   const handleFontSizeChange = (newSize: number) => {
     const clampedSize = Math.max(6, Math.min(200, newSize));
@@ -242,9 +265,10 @@ export function TextPropertiesPanel() {
   };
 
   // Handle color change
-  const handleColorChange = (color: string) => {
+  // skipEvent: set to true during color picker dragging to avoid lag
+  const handleColorChange = (color: string, skipEvent = false) => {
     setFontColor(color);
-    applyProperty("fill", color);
+    applyProperty("fill", color, skipEvent);
   };
 
   // Toggle bold
@@ -282,17 +306,19 @@ export function TextPropertiesPanel() {
   };
 
   // Handle line height change
-  const handleLineHeightChange = (value: number) => {
+  // skipEvent: set to true during slider dragging to avoid lag
+  const handleLineHeightChange = (value: number, skipEvent = false) => {
     const clampedValue = Math.max(0.5, Math.min(3, value));
     setLineHeight(clampedValue);
-    applyProperty("lineHeight", clampedValue);
+    applyProperty("lineHeight", clampedValue, skipEvent);
   };
 
   // Handle character spacing change
-  const handleCharSpacingChange = (value: number) => {
+  // skipEvent: set to true during slider dragging to avoid lag
+  const handleCharSpacingChange = (value: number, skipEvent = false) => {
     const clampedValue = Math.max(-200, Math.min(800, value));
     setCharSpacing(clampedValue);
-    applyProperty("charSpacing", clampedValue);
+    applyProperty("charSpacing", clampedValue, skipEvent);
   };
 
   // Handle text transform (uppercase/lowercase)
@@ -677,8 +703,8 @@ export function TextPropertiesPanel() {
     saveToHistory();
   };
 
-  // Apply global text color
-  const applyGlobalTextColor = (color: string) => {
+  // Apply global text color (debounced for color picker dragging)
+  const applyGlobalTextColor = useCallback((color: string, shouldSaveHistory = false) => {
     if (!canvas) return;
     setDocFontColor(color);
 
@@ -688,11 +714,13 @@ export function TextPropertiesPanel() {
       }
     });
     canvas.renderAll();
-    saveToHistory();
-  };
+    if (shouldSaveHistory) {
+      saveToHistory();
+    }
+  }, [canvas, saveToHistory]);
 
-  // Apply accent color to section headers
-  const applyAccentColor = (color: string) => {
+  // Apply accent color to section headers (debounced for color picker dragging)
+  const applyAccentColor = useCallback((color: string, shouldSaveHistory = false) => {
     if (!canvas) return;
     setDocAccentColor(color);
 
@@ -705,8 +733,10 @@ export function TextPropertiesPanel() {
       }
     });
     canvas.renderAll();
-    saveToHistory();
-  };
+    if (shouldSaveHistory) {
+      saveToHistory();
+    }
+  }, [canvas, saveToHistory]);
 
   // Show Shape Properties panel if shape is selected (and no text)
   if (selectedShapeObject && !selectedTextObject) {
@@ -732,9 +762,13 @@ export function TextPropertiesPanel() {
               <input
                 type="color"
                 value={typeof shapeColor === 'string' ? shapeColor : "#f4f4f5"}
+                onInput={(e) => {
+                  selectedShapeObject.set('fill', (e.target as HTMLInputElement).value);
+                  canvas?.requestRenderAll();
+                }}
                 onChange={(e) => {
                   selectedShapeObject.set('fill', e.target.value);
-                  canvas?.renderAll();
+                  canvas?.requestRenderAll();
                   saveToHistory();
                 }}
                 className="h-8 w-8 cursor-pointer rounded border border-zinc-200 dark:border-zinc-700"
@@ -743,9 +777,9 @@ export function TextPropertiesPanel() {
                 value={typeof shapeColor === 'string' ? shapeColor : ""}
                 onChange={(e) => {
                   selectedShapeObject.set('fill', e.target.value);
-                  canvas?.renderAll();
-                  saveToHistory();
+                  canvas?.requestRenderAll();
                 }}
+                onBlur={() => saveToHistory()}
                 className="h-8 flex-1 font-mono text-xs"
                 placeholder="#000000"
               />
@@ -779,12 +813,19 @@ export function TextPropertiesPanel() {
               <input
                 type="color"
                 value={strokeColor === "transparent" ? "#000000" : strokeColor}
+                onInput={(e) => {
+                  selectedShapeObject.set('stroke', (e.target as HTMLInputElement).value);
+                  if (strokeWidth === 0) {
+                    selectedShapeObject.set('strokeWidth', 1);
+                  }
+                  canvas?.requestRenderAll();
+                }}
                 onChange={(e) => {
                   selectedShapeObject.set('stroke', e.target.value);
                   if (strokeWidth === 0) {
                     selectedShapeObject.set('strokeWidth', 1);
                   }
-                  canvas?.renderAll();
+                  canvas?.requestRenderAll();
                   saveToHistory();
                 }}
                 className="h-8 w-8 cursor-pointer rounded border border-zinc-200 dark:border-zinc-700"
@@ -794,9 +835,9 @@ export function TextPropertiesPanel() {
                 value={strokeWidth}
                 onChange={(e) => {
                   selectedShapeObject.set('strokeWidth', parseInt(e.target.value) || 0);
-                  canvas?.renderAll();
-                  saveToHistory();
+                  canvas?.requestRenderAll();
                 }}
+                onBlur={() => saveToHistory()}
                 className="h-8 w-16 text-center"
                 min={0}
                 max={20}
@@ -807,7 +848,7 @@ export function TextPropertiesPanel() {
               onClick={() => {
                 selectedShapeObject.set('stroke', null);
                 selectedShapeObject.set('strokeWidth', 0);
-                canvas?.renderAll();
+                canvas?.requestRenderAll();
                 saveToHistory();
               }}
               className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
@@ -827,12 +868,14 @@ export function TextPropertiesPanel() {
                 min="0"
                 max="1"
                 step="0.05"
-                value={opacity}
+                defaultValue={opacity}
+                key={selectedShapeObject?.id || 'opacity'}
                 onChange={(e) => {
                   selectedShapeObject.set('opacity', parseFloat(e.target.value));
-                  canvas?.renderAll();
-                  saveToHistory();
+                  canvas?.requestRenderAll();
                 }}
+                onMouseUp={() => saveToHistory()}
+                onTouchEnd={() => saveToHistory()}
                 className="flex-1 h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer dark:bg-zinc-700"
               />
               <span className="text-xs text-zinc-600 w-10 text-right">{Math.round(opacity * 100)}%</span>
@@ -851,14 +894,16 @@ export function TextPropertiesPanel() {
                   min="0"
                   max="50"
                   step="1"
-                  value={selectedShapeObject.rx || 0}
+                  defaultValue={selectedShapeObject.rx || 0}
+                  key={`${selectedShapeObject?.id}-rx` || 'rx'}
                   onChange={(e) => {
                     const radius = parseInt(e.target.value);
                     selectedShapeObject.set('rx', radius);
                     selectedShapeObject.set('ry', radius);
-                    canvas?.renderAll();
-                    saveToHistory();
+                    canvas?.requestRenderAll();
                   }}
+                  onMouseUp={() => saveToHistory()}
+                  onTouchEnd={() => saveToHistory()}
                   className="flex-1 h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer dark:bg-zinc-700"
                 />
                 <span className="text-xs text-zinc-600 w-8 text-right">{selectedShapeObject.rx || 0}</span>
@@ -870,17 +915,68 @@ export function TextPropertiesPanel() {
 
           {/* Layer controls */}
           <div className="space-y-2">
-            <Label className="text-xs text-zinc-500">Layer</Label>
+            <Label className="flex items-center gap-1.5 text-xs text-zinc-500">
+              <Layers className="h-3 w-3" />
+              Layer
+            </Label>
+            {/* Layer selector dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-3 w-1 rounded-full"
+                      style={{
+                        backgroundColor: layers.find(
+                          (l: Layer) => l.id === ((selectedShapeObject as any).layerId || 'content')
+                        )?.color || '#3b82f6'
+                      }}
+                    />
+                    {(() => {
+                      const layerId = (selectedShapeObject as any).layerId || 'content';
+                      const layer = layers.find((l: Layer) => l.id === layerId);
+                      if (!layer) return 'Content';
+                      if (['background', 'content', 'foreground'].includes(layer.id)) {
+                        return layer.id === 'background' ? 'Background' : layer.id === 'content' ? 'Content' : 'Foreground';
+                      }
+                      return layer.name;
+                    })()}
+                  </div>
+                  <ChevronDown className="h-3 w-3 text-zinc-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {[...layers].sort((a, b) => b.order - a.order).map((layer: Layer) => {
+                  const displayName = ['background', 'content', 'foreground'].includes(layer.id)
+                    ? layer.id === 'background' ? 'Background' : layer.id === 'content' ? 'Content' : 'Foreground'
+                    : layer.name;
+                  const isCurrentLayer = ((selectedShapeObject as any).layerId || 'content') === layer.id;
+                  return (
+                    <DropdownMenuItem
+                      key={layer.id}
+                      onClick={() => {
+                        moveObjectToLayer(selectedShapeObject, layer.id);
+                      }}
+                      className={cn("text-xs", isCurrentLayer && "bg-zinc-100 dark:bg-zinc-800")}
+                    >
+                      <div
+                        className="h-3 w-1 rounded-full mr-2"
+                        style={{ backgroundColor: layer.color }}
+                      />
+                      {displayName}
+                      {isCurrentLayer && <span className="ml-auto text-zinc-400">✓</span>}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* Quick actions */}
             <div className="flex gap-1">
               <Button
                 variant="outline"
                 size="sm"
                 className="flex-1 text-xs"
-                onClick={() => {
-                  canvas?.sendObjectToBack(selectedShapeObject);
-                  canvas?.renderAll();
-                  saveToHistory();
-                }}
+                onClick={() => sendToBack()}
               >
                 To Back
               </Button>
@@ -888,11 +984,7 @@ export function TextPropertiesPanel() {
                 variant="outline"
                 size="sm"
                 className="flex-1 text-xs"
-                onClick={() => {
-                  canvas?.bringObjectToFront(selectedShapeObject);
-                  canvas?.renderAll();
-                  saveToHistory();
-                }}
+                onClick={() => bringToFront()}
               >
                 To Front
               </Button>
@@ -939,14 +1031,15 @@ export function TextPropertiesPanel() {
               <input
                 type="color"
                 value={docFontColor}
-                onChange={(e) => applyGlobalTextColor(e.target.value)}
+                onInput={(e) => applyGlobalTextColor((e.target as HTMLInputElement).value, false)}
+                onChange={(e) => applyGlobalTextColor(e.target.value, true)}
                 className="h-7 w-7 cursor-pointer rounded border border-zinc-200 dark:border-zinc-700"
               />
               <div className="flex gap-1">
                 {["#18181b", "#374151", "#6b7280", "#1e40af", "#166534"].map((color) => (
                   <button
                     key={color}
-                    onClick={() => applyGlobalTextColor(color)}
+                    onClick={() => applyGlobalTextColor(color, true)}
                     className={cn(
                       "h-6 w-6 rounded border-2 transition-all",
                       docFontColor === color ? "border-zinc-900 dark:border-zinc-100" : "border-transparent hover:border-zinc-300"
@@ -963,14 +1056,15 @@ export function TextPropertiesPanel() {
               <input
                 type="color"
                 value={docAccentColor}
-                onChange={(e) => applyAccentColor(e.target.value)}
+                onInput={(e) => applyAccentColor((e.target as HTMLInputElement).value, false)}
+                onChange={(e) => applyAccentColor(e.target.value, true)}
                 className="h-7 w-7 cursor-pointer rounded border border-zinc-200 dark:border-zinc-700"
               />
               <div className="flex gap-1">
                 {["#3b82f6", "#8b5cf6", "#ec4899", "#f97316", "#10b981"].map((color) => (
                   <button
                     key={color}
-                    onClick={() => applyAccentColor(color)}
+                    onClick={() => applyAccentColor(color, true)}
                     className={cn(
                       "h-6 w-6 rounded border-2 transition-all",
                       docAccentColor === color ? "border-zinc-900 dark:border-zinc-100" : "border-transparent hover:border-zinc-300"
@@ -1130,6 +1224,11 @@ export function TextPropertiesPanel() {
               </button>
             </div>
           </div>
+
+          <Separator />
+
+          {/* Layers */}
+          <LayerPanel />
 
           <Separator />
 
@@ -1392,8 +1491,18 @@ export function TextPropertiesPanel() {
               min="0.8"
               max="2.5"
               step="0.1"
-              value={lineHeight}
-              onChange={(e) => handleLineHeightChange(parseFloat(e.target.value))}
+              defaultValue={lineHeight}
+              key={`${(selectedTextObject as any)?.id}-lh` || 'lh'}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setLineHeight(val);
+                if (selectedTextObject) {
+                  selectedTextObject.set('lineHeight', val);
+                  canvas?.requestRenderAll();
+                }
+              }}
+              onMouseUp={fireModifiedEvent}
+              onTouchEnd={fireModifiedEvent}
               className="flex-1 h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer dark:bg-zinc-700"
             />
             <span className="text-xs text-zinc-600 w-8 text-right">{lineHeight.toFixed(1)}</span>
@@ -1403,7 +1512,7 @@ export function TextPropertiesPanel() {
             {[1.0, 1.2, 1.4, 1.6, 2.0].map((lh) => (
               <button
                 key={lh}
-                onClick={() => handleLineHeightChange(lh)}
+                onClick={() => handleLineHeightChange(lh, false)}
                 className={cn(
                   "rounded px-2 py-1 text-xs transition-colors flex-1",
                   Math.abs(lineHeight - lh) < 0.05
@@ -1427,8 +1536,18 @@ export function TextPropertiesPanel() {
               min="-100"
               max="500"
               step="10"
-              value={charSpacing}
-              onChange={(e) => handleCharSpacingChange(parseInt(e.target.value))}
+              defaultValue={charSpacing}
+              key={`${(selectedTextObject as any)?.id}-cs` || 'cs'}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setCharSpacing(val);
+                if (selectedTextObject) {
+                  selectedTextObject.set('charSpacing', val);
+                  canvas?.requestRenderAll();
+                }
+              }}
+              onMouseUp={fireModifiedEvent}
+              onTouchEnd={fireModifiedEvent}
               className="flex-1 h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer dark:bg-zinc-700"
             />
             <span className="text-xs text-zinc-600 w-8 text-right">{charSpacing}</span>
@@ -1438,7 +1557,7 @@ export function TextPropertiesPanel() {
             {[0, 50, 100, 200].map((sp) => (
               <button
                 key={sp}
-                onClick={() => handleCharSpacingChange(sp)}
+                onClick={() => handleCharSpacingChange(sp, false)}
                 className={cn(
                   "rounded px-2 py-1 text-xs transition-colors flex-1",
                   charSpacing === sp
@@ -1461,12 +1580,14 @@ export function TextPropertiesPanel() {
             <input
               type="color"
               value={fontColor}
-              onChange={(e) => handleColorChange(e.target.value)}
+              onInput={(e) => handleColorChange((e.target as HTMLInputElement).value, true)}
+              onChange={(e) => handleColorChange(e.target.value, false)}
               className="h-8 w-8 cursor-pointer rounded border border-zinc-200 dark:border-zinc-700"
             />
             <Input
               value={fontColor}
-              onChange={(e) => handleColorChange(e.target.value)}
+              onChange={(e) => handleColorChange(e.target.value, true)}
+              onBlur={fireModifiedEvent}
               className="h-8 flex-1 font-mono text-xs"
               placeholder="#000000"
             />
@@ -1476,7 +1597,7 @@ export function TextPropertiesPanel() {
             {["#18181b", "#52525b", "#71717a", "#3b82f6", "#10b981", "#ef4444", "#ffffff"].map((color) => (
               <button
                 key={color}
-                onClick={() => handleColorChange(color)}
+                onClick={() => handleColorChange(color, false)}
                 className={cn(
                   "h-6 w-6 rounded border-2 transition-all",
                   fontColor === color ? "border-zinc-900 dark:border-zinc-100" : "border-transparent hover:border-zinc-300"
@@ -1484,6 +1605,86 @@ export function TextPropertiesPanel() {
                 style={{ backgroundColor: color }}
               />
             ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Layer controls */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-1.5 text-xs text-zinc-500">
+            <Layers className="h-3 w-3" />
+            Layer
+          </Label>
+          {/* Layer selector dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-3 w-1 rounded-full"
+                    style={{
+                      backgroundColor: layers.find(
+                        (l: Layer) => l.id === ((selectedTextObject as any)?.layerId || 'content')
+                      )?.color || '#3b82f6'
+                    }}
+                  />
+                  {(() => {
+                    const layerId = (selectedTextObject as any)?.layerId || 'content';
+                    const layer = layers.find((l: Layer) => l.id === layerId);
+                    if (!layer) return 'Content';
+                    if (['background', 'content', 'foreground'].includes(layer.id)) {
+                      return layer.id === 'background' ? 'Background' : layer.id === 'content' ? 'Content' : 'Foreground';
+                    }
+                    return layer.name;
+                  })()}
+                </div>
+                <ChevronDown className="h-3 w-3 text-zinc-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {[...layers].sort((a, b) => b.order - a.order).map((layer: Layer) => {
+                const displayName = ['background', 'content', 'foreground'].includes(layer.id)
+                  ? layer.id === 'background' ? 'Background' : layer.id === 'content' ? 'Content' : 'Foreground'
+                  : layer.name;
+                const isCurrentLayer = ((selectedTextObject as any)?.layerId || 'content') === layer.id;
+                return (
+                  <DropdownMenuItem
+                    key={layer.id}
+                    onClick={() => {
+                      if (selectedTextObject) moveObjectToLayer(selectedTextObject, layer.id);
+                    }}
+                    className={cn("text-xs", isCurrentLayer && "bg-zinc-100 dark:bg-zinc-800")}
+                  >
+                    <div
+                      className="h-3 w-1 rounded-full mr-2"
+                      style={{ backgroundColor: layer.color }}
+                    />
+                    {displayName}
+                    {isCurrentLayer && <span className="ml-auto text-zinc-400">✓</span>}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* Quick actions */}
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs"
+              onClick={() => sendToBack()}
+            >
+              To Back
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs"
+              onClick={() => bringToFront()}
+            >
+              To Front
+            </Button>
           </div>
         </div>
       </div>

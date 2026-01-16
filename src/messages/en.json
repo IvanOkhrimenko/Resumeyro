@@ -728,5 +728,43 @@
     "multiModelReview": "Multi-Model Review",
     "pdfWatermark": "PDF Watermark",
     "prioritySupport": "Priority Support"
+  },
+  "templateModal": {
+    "title": "Save as Template",
+    "description": "Save this canvas layout as a reusable template. Users will be able to create new resumes from this template.",
+    "nameEn": "Template Name (English)",
+    "nameUk": "Template Name (Ukrainian)",
+    "namePlaceholder": "e.g., Modern Professional",
+    "nameUkPlaceholder": "e.g., Сучасний професійний",
+    "descriptionEn": "Description (English)",
+    "descriptionUk": "Description (Ukrainian)",
+    "descriptionPlaceholder": "Brief description of the template style...",
+    "descriptionUkPlaceholder": "Короткий опис стилю шаблону...",
+    "category": "Category",
+    "selectCategory": "Select category",
+    "region": "Region",
+    "selectRegion": "Select region",
+    "premium": "Premium template (paid users only)",
+    "save": "Save Template",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "saveSuccess": "Template saved successfully!",
+    "saveError": "Failed to save template",
+    "canvasNotReady": "Canvas is not ready",
+    "nameRequired": "Template name is required"
+  },
+  "layerPanel": {
+    "title": "Layers",
+    "addLayer": "Add layer",
+    "deleteLayer": "Delete layer",
+    "renameLayer": "Rename layer",
+    "visibility": "Toggle visibility",
+    "lock": "Lock/Unlock",
+    "background": "Background",
+    "content": "Content",
+    "foreground": "Foreground",
+    "newLayer": "New Layer",
+    "moveToLayer": "Move to layer",
+    "cannotDeleteDefault": "Cannot delete default layers"
   }
 }
