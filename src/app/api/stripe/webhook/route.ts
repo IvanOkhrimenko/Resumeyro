@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { db, withRetry, safeDbOperation } from "@/lib/db";
 import { SubscriptionStatus } from "@prisma/client";
+import { getAllPlans } from "@/lib/subscription-plans";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -30,7 +31,7 @@ async function handleCheckoutCompleted(
     ) as Stripe.Subscription;
     const subscriptionItem = stripeSubscription.items.data[0];
     const priceId = subscriptionItem?.price.id;
-    const plan = getPlanFromPriceId(priceId);
+    const plan = await getPlanFromPriceId(priceId);
     const periodStart = subscriptionItem?.current_period_start;
     const periodEnd = subscriptionItem?.current_period_end;
 
@@ -82,7 +83,7 @@ async function handleSubscriptionUpdated(
   try {
     const subItem = subscription.items.data[0];
     const priceId = subItem?.price.id;
-    const plan = getPlanFromPriceId(priceId);
+    const plan = await getPlanFromPriceId(priceId);
 
     let status: SubscriptionStatus = "ACTIVE";
     if (subscription.status === "past_due") status = "PAST_DUE";
@@ -187,14 +188,24 @@ async function handlePaymentFailed(
 // Helper Functions
 // ============================================
 
-function getPlanFromPriceId(priceId: string): string {
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
-    return "PRO";
+async function getPlanFromPriceId(priceId: string): Promise<string> {
+  try {
+    // Get all plans from database and find matching price ID
+    const plans = await getAllPlans();
+
+    for (const plan of plans) {
+      if (plan.stripePriceIdMonthly === priceId || plan.stripePriceIdYearly === priceId) {
+        return plan.key;
+      }
+    }
+
+    // Fallback to FREE if no matching plan found
+    console.warn(`[Webhook] No plan found for price ID: ${priceId}`);
+    return "FREE";
+  } catch (error) {
+    console.error("[Webhook] Error fetching plans from database:", error);
+    return "FREE";
   }
-  if (priceId === process.env.STRIPE_PREMIUM_PRICE_ID) {
-    return "PREMIUM";
-  }
-  return "FREE";
 }
 
 // ============================================

@@ -85,18 +85,7 @@ const SETTING_LABELS: Record<string, { label: string; description: string; categ
     category: "Stripe",
     placeholder: "pk_live_...",
   },
-  STRIPE_PRO_PRICE_ID: {
-    label: "Pro Plan Price ID",
-    description: "Stripe price ID for Pro subscription",
-    category: "Stripe",
-    placeholder: "price_...",
-  },
-  STRIPE_PREMIUM_PRICE_ID: {
-    label: "Premium Plan Price ID",
-    description: "Stripe price ID for Premium subscription",
-    category: "Stripe",
-    placeholder: "price_...",
-  },
+  // Note: Price IDs are now configured in Admin → Plans page (stripePriceIdMonthly/Yearly)
   GOOGLE_CLIENT_ID: {
     label: "Google OAuth Client ID",
     description: "For Google Sign-In",
